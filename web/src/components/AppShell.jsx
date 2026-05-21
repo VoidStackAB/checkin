@@ -1,4 +1,5 @@
 import { Link as RouterLink } from 'react-router-dom';
+import { getMemberIdentity } from '../storage/member.js';
 import {
   Box,
   Button,
@@ -17,6 +18,8 @@ const NAV_ITEMS = [
 ];
 
 export default function AppShell() {
+  const member = getMemberIdentity();
+
   return (
     <Flex direction="column" minH="100dvh" bg="gray.50">
       <Container
@@ -33,7 +36,9 @@ export default function AppShell() {
               Check-in
             </Heading>
             <Text mt={2} color="gray.600" fontSize="md">
-              Träningscheck-in för klubben
+              {member
+                ? `Hej ${member.firstName}!`
+                : 'Träningscheck-in för klubben'}
             </Text>
           </Box>
 

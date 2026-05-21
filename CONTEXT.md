@@ -17,12 +17,20 @@ The Swedish `/privacy` page describing Google Sheets storage and club contact de
 _Avoid_: Consent screen (shorter summary + link), **Ranking opt-out** explanation as the main topic, policy version tracking
 
 **Ranking opt-out**:
-A **Member** preference to hide their name from the public top-10 list while still seeing their own rank; not part of **Data processing consent**.
-_Avoid_: GDPR consent, privacy toggle (ambiguous)
+A **Member** preference to hide their name from the public top-10 list while still seeing their own rank; not part of **Data processing consent**. Stored on the **Members sheet** as `optOutRanking` (`FALSE` = visible on topplista, `TRUE` = hidden); new members default to `FALSE`.
+_Avoid_: GDPR consent, privacy toggle (ambiguous), yes/no text in the sheet
 
 **Member**:
-A club person who checks in; identified by a stable server-side UUID separate from their display name.
-_Avoid_: User, account, profile (when meaning the person)
+A club person who checks in; identified by a stable server-side UUID (`memberId`) assigned by the server on registration (`crypto.randomUUID()`); separate from their display name. Each `POST` registration creates a new row (no name-based dedup in v1); the onboarding UI prevents double-submit. Registration accepts trimmed non-empty `firstName` and `lastName` only (no max length or character rules in v1). Reusing an existing `memberId` on a new phone is explicit in slice #6 (link), not client-supplied on create.
+_Avoid_: User, account, profile (when meaning the person), assuming the server merges duplicate name submissions automatically, coaches fixing typos in the spreadsheet, client-generated ids on create
+
+**On-device member identity**:
+The browser’s stored `memberId`, `firstName`, and `lastName` (three separate `localStorage` keys) for whoever is using the app on this phone; not validated against Sheets on app load in v1.
+_Avoid_: Login session, server-side member session, assuming localStorage implies the row still exists in Sheets, a single JSON blob for member fields
+
+**Members sheet**:
+The persistent Google Sheets tab listing every **Member** (one row per `memberId`); if the tab is missing on first registration, the app creates the tab and header row—coaches only need an empty spreadsheet shared with the service account. If the tab exists but row 1 is not the canonical headers, the API refuses read/write until a coach fixes or deletes the tab (no silent header overwrite or column guessing). `createdAt` is set by the server at registration as a Stockholm-local timestamp (same calendar timezone as **Check-in**).
+_Avoid_: Yearly attendance tabs (`checkins_YYYY`), assuming coaches hand-type every column header before first use, renaming headers for readability without updating the app, UTC-only timestamps on member rows
 
 **Check-in**:
 One attendance record for a member on a single calendar day (Europe/Stockholm).
@@ -47,15 +55,21 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 - **Privacy policy page** is public; **Data processing consent** and **Club unlock** gates do not apply to that route
 - Accept stores only `gdprAccepted` in the browser (no policy version); if the club changes policy text, coaches ask members to clear site data or accept again manually — no automatic re-prompt in v1
 - **Ranking opt-out** is stored on the **Member** record and changed in settings, not on the consent screen
+- Display names are corrected by the **Member** in settings (#7), not by coaches editing the **Members sheet** manually
+- `POST /api/members` returns `memberId` plus trimmed `firstName` and `lastName` for the client to persist in **On-device member identity** (not `optOutRanking` or `createdAt` in the response)
+- `POST /api/members/match` body: `{ firstName, lastName }`; response: `{ candidates: [] }` in #4; in #6 each candidate includes `memberId`, `displayName`, `yearCount` (max 3)
 - **Club unlock** is required before member-facing flows (check-in, leaderboard, settings APIs); it is separate from **Member** identity stored in the browser
+- After **Data processing consent**, the client shows onboarding until **On-device member identity** exists (`memberId`, `firstName`, `lastName` all present), then home; no server round-trip to verify the member row on load (stale ids surface when a member API runs, e.g. check-in)
+- Onboarding is a fourth client gate in `GatedApp` (after PIN and consent, before `AppShell`); not a separate route or overlay on home in v1
+- Slice #4 ships `POST /api/members/match` as a stub returning no candidates (`[]`); slice #6 replaces it with fuzzy logic and the “Är det här du?” UI — #4 does not show the confirm screen. Onboarding submit runs **match then create** (skip confirm when `candidates` is empty); same pipeline in #6 when matches exist
 - **Member** display name and `memberId` in browser storage are not cleared when **Club unlock** expires or **Club PIN** changes — only the unlock cookie is dropped; the person re-enters **Club PIN** and continues with the same stored identity
 - A **Member** has at most one **Check-in** per calendar day
-- **Check-in** rows are stored per calendar year; **Member** identity persists across years
+- **Check-in** rows are stored per calendar year; **Member** identity persists across years on the **Members sheet**
 
 ## Example dialogue
 
 > **Dev:** "When a **Member** changes their display name, does their **Check-in** history stay linked?"
-> **Domain expert:** "Yes — the UUID is the identity; the name on old rows can stay as it was or we update display going forward — that's a later slice decision."
+> **Domain expert:** "Yes — the UUID is the identity; the name on old rows can stay as it was or we update display going forward — that's a later slice decision. Typos are fixed by the **Member** in settings, not by coaches editing the sheet."
 
 > **Dev:** "If we change **Club PIN** on the server, do old **Club unlock** cookies still work?"
 > **Domain expert:** "No — everyone must enter the new PIN. Same PIN after restart is fine; a new PIN invalidates old unlocks."
@@ -84,6 +98,18 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 > **Dev:** "Onboarding isn’t built yet — after Accept in slice #3, where do they go?"
 > **Domain expert:** "The existing stub home — proves the gate. Onboarding slots in behind the same guard in #4."
 
+> **Dev:** "Anna still has memberId in localStorage but her row was deleted in Sheets — does she get home on open?"
+> **Domain expert:** "Yes in v1 — we only check localStorage for the onboarding gate. Check-in or settings will fail later if the id is gone; we can add a verify-on-load later if coaches need it."
+
+> **Dev:** "Coach renamed a column on the members tab — do we map by label?"
+> **Domain expert:** "No — fail until headers match what the app created, or delete the tab and let first registration recreate it."
+
+> **Dev:** "Erik double-taps Fortsätt — one or two members?"
+> **Domain expert:** "Two rows if both requests succeed — we disable the button instead. Same-name dedup is fuzzy match in #6, not silent merge on create."
+
+> **Dev:** "Do we build fuzzy in #4?"
+> **Domain expert:** "No — match endpoint exists but returns empty in #4; real matcher and confirm UI land in #6."
+
 ## Implementation notes (scaffold)
 
 - Monorepo: npm workspaces, packages `api/` and `web/` at repo root
@@ -103,12 +129,14 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 - `GET /api/session` → `{ "unlocked": true | false }` only
 - PIN UI (slice #2): session check on mount; PIN screen; one numeric-friendly input, no `maxLength`; compare length-agnostic on server
 - Unlock rate limit: in-memory cap on `POST /api/unlock` only (e.g. 10 failures / IP / 15 min) → `429` `{ "error": "rate_limited" }`
-- Tests (slice #2): `node --test` in `api/`; root `npm test` runs `npm test -w api`
+- Tests (slice #2+): `node --test` in `api/`; root `npm test` runs `npm test -w api`; Sheets tests inject `sheetsAdapter` (in-memory), no live sheet in CI
 - Web API calls: shared `apiFetch` with `credentials: 'include'`. Unlock cookie name `checkin_unlock`: `SameSite=Lax`, `httpOnly`, `Path=/`
 - PIN slice boot: API refuses to start without `CLUB_PIN` and `SESSION_SECRET`
 - Protected `/api/*` without unlock: `401` `{ "error": "unlock_required" }`
 - Modules: ESM in both `api` and `web` (`"type": "module"`)
 - Google credentials: `GOOGLE_SERVICE_ACCOUNT` is a filesystem path to service-account JSON (not inline JSON in v1)
+- Sheets slice (#4): API refuses to start without `SPREADSHEET_ID` and `GOOGLE_SERVICE_ACCOUNT` (same strictness as `CLUB_PIN` / `SESSION_SECRET`)
+- Sheets adapter errors (slice #4, JSON `{ "error": "<code>" }` only): `sheets_unavailable` (503), `sheets_forbidden` (503), `sheet_setup_invalid` (503), `member_create_failed` (500); onboarding maps each to Swedish copy + README HITL for setup/forbidden
 - Node: `engines.node` `>=20.11 <21` (document same in README)
 - SPA build: Vite outputs to `web/dist`; Express serves `../web/dist` relative to the API package
 - Timezone: API sets `process.env.TZ` to `Europe/Stockholm` by default at boot; `TZ` still documented in `.env.example`

@@ -5,7 +5,9 @@ import PinScreen from './components/PinScreen.jsx';
 import ConsentScreen from './components/ConsentScreen.jsx';
 import ConsentDeclineScreen from './components/ConsentDeclineScreen.jsx';
 import AppShell from './components/AppShell.jsx';
+import OnboardingScreen from './components/OnboardingScreen.jsx';
 import { hasGdprAccepted } from './storage/gdpr.js';
+import { hasMemberIdentity } from './storage/member.js';
 
 function resolveGate(unlocked) {
   if (!unlocked) {
@@ -13,6 +15,9 @@ function resolveGate(unlocked) {
   }
   if (!hasGdprAccepted()) {
     return 'consent';
+  }
+  if (!hasMemberIdentity()) {
+    return 'onboarding';
   }
   return 'app';
 }
@@ -47,6 +52,11 @@ export default function GatedApp() {
   }
 
   function handleConsentAccepted() {
+    setGate(resolveGate(true));
+    setShowDecline(false);
+  }
+
+  function handleOnboardingComplete() {
     setGate('app');
     setShowDecline(false);
   }
@@ -83,6 +93,10 @@ export default function GatedApp() {
         onDeclined={() => setShowDecline(true)}
       />
     );
+  }
+
+  if (gate === 'onboarding') {
+    return <OnboardingScreen onComplete={handleOnboardingComplete} />;
   }
 
   return <AppShell />;

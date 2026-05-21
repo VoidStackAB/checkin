@@ -10,7 +10,7 @@ Mobile-first training check-in for a sports club (Swedish UI). Monorepo: Express
 
 ```bash
 npm install
-cp .env.example .env   # set CLUB_PIN and SESSION_SECRET for PIN slice
+cp .env.example .env   # set CLUB_PIN, SESSION_SECRET, SPREADSHEET_ID, GOOGLE_SERVICE_ACCOUNT
 npm run dev
 ```
 
@@ -38,7 +38,7 @@ curl http://localhost:3000/api/health
 
 ## Environment variables
 
-Copy `.env.example` to `.env`. PIN slice (#2) requires `CLUB_PIN` and `SESSION_SECRET` — the API exits on startup if either is missing.
+Copy `.env.example` to `.env`. The API exits on startup if required variables are missing (`CLUB_PIN`, `SESSION_SECRET`, `SPREADSHEET_ID`, `GOOGLE_SERVICE_ACCOUNT`).
 
 | Variable | Required when | Purpose |
 |----------|---------------|---------|
@@ -47,8 +47,8 @@ Copy `.env.example` to `.env`. PIN slice (#2) requires `CLUB_PIN` and `SESSION_S
 | `SESSION_SECRET` | PIN slice (#2) | Signs the club-unlock session cookie |
 | `CLUB_PIN` | PIN slice (#2) | Club PIN (server only; length not fixed) |
 | `COOKIE_SECURE` | Optional | Set `true` to force `Secure` cookies in development |
-| `SPREADSHEET_ID` | Sheets slice (#4) | Google Spreadsheet ID |
-| `GOOGLE_SERVICE_ACCOUNT` | Sheets slice (#4) | Path to service-account JSON file |
+| `SPREADSHEET_ID` | Sheets slice (#4)+ | Google Spreadsheet ID |
+| `GOOGLE_SERVICE_ACCOUNT` | Sheets slice (#4)+ | Path to service-account JSON file |
 
 GDPR slice (#3) uses client-only `localStorage.gdprAccepted` and a static `/privacy` page — no extra env vars.
 
@@ -60,11 +60,17 @@ web/          React + Chakra UI (Vite)
 docs/         PRD and implementation issue slices
 CONTEXT.md    Domain glossary and scaffold decisions
 ```
-## Setting up Google
+## Setting up Google Sheets
 
-- Create a [Service account](https://console.cloud.google.com/iam-admin/serviceaccounts) without any permissions.
-- Create a API Key for service account and donwload, insert API key location in .env
-- Enable google [sheets API](https://console.cloud.google.com/apis/api/sheets.googleapis.com)
+1. Create a [service account](https://console.cloud.google.com/iam-admin/serviceaccounts) (no GCP project roles required for Sheets-only access).
+2. Create a JSON key for that account and save it locally (e.g. `./secrets/service-account.json`). Set `GOOGLE_SERVICE_ACCOUNT` in `.env` to that path.
+3. Enable the [Google Sheets API](https://console.cloud.google.com/apis/api/sheets.googleapis.com) for your project.
+4. Create an empty spreadsheet in Google Drive and copy its ID into `SPREADSHEET_ID` (from the spreadsheet URL).
+5. Share the spreadsheet with the service account email (from the JSON `client_email`) as **Editor**.
+
+On first member registration the API creates a `members` tab with headers (`memberId`, `firstName`, `lastName`, `optOutRanking`, `createdAt`). Do not rename those headers manually — fix or delete the tab and register again if the sheet was misconfigured.
+
+CI and local unit tests use an in-memory adapter (no live Google call).
 
 ## Deployment note
 

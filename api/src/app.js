@@ -7,12 +7,15 @@ import { createRequireUnlock } from './clubUnlock/middleware.js';
 import { healthRouter } from './routes/health.js';
 import { createUnlockRouter } from './routes/unlock.js';
 import { createSessionRouter } from './routes/session.js';
+import { createMembersRouter } from './routes/members.js';
+import { resolveSheetsAdapter } from './sheets/resolveAdapter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.resolve(__dirname, '../../web/dist');
 
 export function createApp(config = loadConfig()) {
   const app = express();
+  const sheetsAdapter = resolveSheetsAdapter(config);
 
   const api = express.Router();
   api.use(express.json());
@@ -22,6 +25,7 @@ export function createApp(config = loadConfig()) {
   api.use(createUnlockRouter(config));
   api.use(createSessionRouter(config));
   api.use(createRequireUnlock(config));
+  api.use(createMembersRouter(sheetsAdapter));
   api.all('*', (_req, res) => {
     res.status(404).json({ error: 'not_found' });
   });
