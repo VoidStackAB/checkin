@@ -1,5 +1,12 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { getMemberIdentity } from '../storage/member.js';
+import {
+  getMeStatus,
+  memberNotFoundMessage,
+  postCheckin,
+  sheetsErrorMessage,
+} from '../api/checkin.js';
 import {
   Box,
   Button,
@@ -17,8 +24,91 @@ const NAV_ITEMS = [
   { id: 'settings', label: 'Inställningar' },
 ];
 
-export default function AppShell() {
+export default function AppShell({ onRequireOnboarding }) {
   const member = getMemberIdentity();
+  const onRequireOnboardingRef = useRef(onRequireOnboarding);
+  onRequireOnboardingRef.current = onRequireOnboarding;
+
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [checkedInToday, setCheckedInToday] = useState(false);
+  const [yearCount, setYearCount] = useState(0);
+  const [error, setError] = useState('');
+  const [checkingIn, setCheckingIn] = useState(false);
+
+  const memberId = member?.memberId;
+
+  const loadStatus = useCallback(async () => {
+    if (!memberId) {
+      setStatusLoading(false);
+      return;
+    }
+    setError('');
+    setStatusLoading(true);
+    try {
+      const res = await getMeStatus(memberId);
+      if (res.status === 404 && res.data.error === 'member_not_found') {
+        onRequireOnboardingRef.current?.();
+        setError(memberNotFoundMessage());
+        return;
+      }
+      if (!res.ok) {
+        setError(sheetsErrorMessage(res.data.error));
+        return;
+      }
+      setCheckedInToday(Boolean(res.data.checkedInToday));
+      setYearCount(res.data.yearCount ?? 0);
+    } catch {
+      setError('Nätverksfel — kontrollera anslutningen och försök igen.');
+    } finally {
+      setStatusLoading(false);
+    }
+  }, [memberId]);
+
+  useEffect(() => {
+    loadStatus();
+  }, [loadStatus]);
+
+  async function handleCheckin() {
+    if (!member || checkedInToday || checkingIn || statusLoading) {
+      return;
+    }
+    setError('');
+    setCheckingIn(true);
+    try {
+      const res = await postCheckin({
+        memberId: member.memberId,
+        firstName: member.firstName,
+        lastName: member.lastName,
+      });
+      if (res.status === 404 && res.data.error === 'member_not_found') {
+        onRequireOnboardingRef.current?.();
+        setError(memberNotFoundMessage());
+        return;
+      }
+      if (!res.ok) {
+        if (res.data.error === 'invalid_format') {
+          setError('Profilen är ofullständig — registrera dig igen.');
+          return;
+        }
+        setError(sheetsErrorMessage(res.data.error));
+        return;
+      }
+      if (
+        res.data.status === 'checked_in' ||
+        res.data.status === 'already_checked_in'
+      ) {
+        setCheckedInToday(true);
+        setYearCount(res.data.yearCount ?? yearCount);
+      }
+    } catch {
+      setError('Nätverksfel — kontrollera anslutningen och försök igen.');
+    } finally {
+      setCheckingIn(false);
+    }
+  }
+
+  const buttonDisabled = statusLoading || checkedInToday || checkingIn;
+  const buttonLabel = checkedInToday ? 'Redan incheckad' : 'Checka in idag';
 
   return (
     <Flex direction="column" minH="100dvh" bg="gray.50">
@@ -35,26 +125,42 @@ export default function AppShell() {
             <Heading as="h1" size="lg">
               Check-in
             </Heading>
-            <Text mt={2} color="gray.600" fontSize="md">
-              {member
-                ? `Hej ${member.firstName}!`
-                : 'Träningscheck-in för klubben'}
-            </Text>
+            {member ? (
+              <>
+                <Text mt={2} color="gray.700" fontSize="lg">
+                  Hej, {member.firstName}!
+                </Text>
+                {!statusLoading && (
+                  <Text mt={1} color="gray.600" fontSize="md">
+                    {yearCount} träningar i år
+                  </Text>
+                )}
+              </>
+            ) : (
+              <Text mt={2} color="gray.600" fontSize="md">
+                Träningscheck-in för klubben
+              </Text>
+            )}
           </Box>
+
+          {error ? (
+            <Text textAlign="center" color="red.600" fontSize="sm">
+              {error}
+            </Text>
+          ) : null}
 
           <Button
             size="lg"
             colorScheme="teal"
             height="4rem"
             fontSize="lg"
-            isDisabled
+            onClick={handleCheckin}
+            isDisabled={buttonDisabled}
+            isLoading={checkingIn}
+            loadingText="Checkar in…"
           >
-            Incheckning
+            {buttonLabel}
           </Button>
-
-          <Text textAlign="center" fontSize="sm" color="gray.500">
-            Kommer snart — incheckning i nästa steg.
-          </Text>
 
           <Link
             as={RouterLink}

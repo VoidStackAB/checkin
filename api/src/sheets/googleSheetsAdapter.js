@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { google } from 'googleapis';
-import { MEMBERS_TAB } from './constants.js';
+import { MEMBERS_TAB, checkinsTabTitle } from './constants.js';
 import { mapGoogleError } from './errors.js';
 
 function parseBool(value) {
@@ -24,6 +24,34 @@ export function createGoogleSheetsAdapter(config) {
   const sheets = google.sheets({ version: 'v4', auth });
   const spreadsheetId = config.spreadsheetId;
 
+  let spreadsheetCache = null;
+  let spreadsheetCacheAt = 0;
+  const SPREADSHEET_CACHE_MS = 60_000;
+
+  async function getSpreadsheetTitles() {
+    const now = Date.now();
+    if (
+      spreadsheetCache &&
+      now - spreadsheetCacheAt < SPREADSHEET_CACHE_MS
+    ) {
+      return spreadsheetCache;
+    }
+    const spreadsheet = await withGoogle(() =>
+      sheets.spreadsheets.get({
+        spreadsheetId,
+        fields: 'sheets.properties.title',
+      }),
+    );
+    spreadsheetCache = spreadsheet.data.sheets ?? [];
+    spreadsheetCacheAt = now;
+    return spreadsheetCache;
+  }
+
+  function invalidateSpreadsheetCache() {
+    spreadsheetCache = null;
+    spreadsheetCacheAt = 0;
+  }
+
   async function withGoogle(fn) {
     try {
       return await fn();
@@ -32,20 +60,9 @@ export function createGoogleSheetsAdapter(config) {
     }
   }
 
-  async function getSpreadsheet() {
-    return withGoogle(() =>
-      sheets.spreadsheets.get({
-        spreadsheetId,
-        fields: 'sheets.properties.title',
-      }),
-    );
-  }
-
   async function getMembersTabMeta() {
-    const spreadsheet = await getSpreadsheet();
-    const sheet = spreadsheet.data.sheets?.find(
-      (s) => s.properties?.title === MEMBERS_TAB,
-    );
+    const sheetList = await getSpreadsheetTitles();
+    const sheet = sheetList.find((s) => s.properties?.title === MEMBERS_TAB);
     if (!sheet) {
       return { exists: false, headers: null };
     }
@@ -62,6 +79,7 @@ export function createGoogleSheetsAdapter(config) {
 
   async function createMembersTab(headers) {
     await withGoogle(async () => {
+      invalidateSpreadsheetCache();
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId,
         requestBody: {
@@ -124,10 +142,90 @@ export function createGoogleSheetsAdapter(config) {
     );
   }
 
+  async function getCheckinsTabMeta(year) {
+    const title = checkinsTabTitle(year);
+    const sheetList = await getSpreadsheetTitles();
+    const sheet = sheetList.find((s) => s.properties?.title === title);
+    if (!sheet) {
+      return { exists: false, headers: null };
+    }
+
+    const headerRes = await withGoogle(() =>
+      sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${title}!1:1`,
+      }),
+    );
+    const headers = headerRes.data.values?.[0] ?? null;
+    return { exists: true, headers };
+  }
+
+  async function createCheckinsTab(year, headers) {
+    const title = checkinsTabTitle(year);
+    await withGoogle(async () => {
+      invalidateSpreadsheetCache();
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              addSheet: {
+                properties: { title },
+              },
+            },
+          ],
+        },
+      });
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${title}!A1`,
+        valueInputOption: 'RAW',
+        requestBody: {
+          values: [headers],
+        },
+      });
+    });
+  }
+
+  async function listCheckinRows(year) {
+    const title = checkinsTabTitle(year);
+    const res = await withGoogle(() =>
+      sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${title}!A2:C`,
+      }),
+    );
+    const rows = res.data.values ?? [];
+    return rows.map((row) => ({
+      memberId: row[0] ?? '',
+      date: row[1] ?? '',
+      displayName: row[2] ?? '',
+    }));
+  }
+
+  async function appendCheckinRow(year, row) {
+    const title = checkinsTabTitle(year);
+    await withGoogle(() =>
+      sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: `${title}!A:C`,
+        valueInputOption: 'USER_ENTERED',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: {
+          values: [[row.memberId, row.date, row.displayName]],
+        },
+      }),
+    );
+  }
+
   return {
     getMembersTabMeta,
     createMembersTab,
     listMemberRows,
     appendMemberRow,
+    getCheckinsTabMeta,
+    createCheckinsTab,
+    listCheckinRows,
+    appendCheckinRow,
   };
 }

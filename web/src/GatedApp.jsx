@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Flex, Spinner } from '@chakra-ui/react';
 import { getSession } from './api/apiFetch.js';
 import PinScreen from './components/PinScreen.jsx';
@@ -7,7 +7,7 @@ import ConsentDeclineScreen from './components/ConsentDeclineScreen.jsx';
 import AppShell from './components/AppShell.jsx';
 import OnboardingScreen from './components/OnboardingScreen.jsx';
 import { hasGdprAccepted } from './storage/gdpr.js';
-import { hasMemberIdentity } from './storage/member.js';
+import { clearMemberIdentity, hasMemberIdentity } from './storage/member.js';
 
 function resolveGate(unlocked) {
   if (!unlocked) {
@@ -61,6 +61,12 @@ export default function GatedApp() {
     setShowDecline(false);
   }
 
+  const handleRequireOnboarding = useCallback(() => {
+    clearMemberIdentity();
+    setGate('onboarding');
+    setShowDecline(false);
+  }, []);
+
   if (gate === 'loading') {
     return (
       <Flex
@@ -99,5 +105,5 @@ export default function GatedApp() {
     return <OnboardingScreen onComplete={handleOnboardingComplete} />;
   }
 
-  return <AppShell />;
+  return <AppShell onRequireOnboarding={handleRequireOnboarding} />;
 }

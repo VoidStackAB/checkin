@@ -25,7 +25,14 @@ export function mapGoogleError(err) {
       'Spreadsheet or resource not found',
     );
   }
-  if (status === 429 || status >= 500) {
+  if (status === 429 || reason === 'rateLimitExceeded') {
+    return new SheetsError(
+      'sheets_rate_limited',
+      503,
+      'Google Sheets read quota exceeded',
+    );
+  }
+  if (status >= 500) {
     return new SheetsError(
       'sheets_unavailable',
       503,

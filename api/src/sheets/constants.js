@@ -7,3 +7,9 @@ export const MEMBERS_HEADERS = [
   'optOutRanking',
   'createdAt',
 ];
+
+export const CHECKINS_HEADERS = ['memberId', 'date', 'displayName'];
+
+export function checkinsTabTitle(year) {
+  return `checkins_${year}`;
+}

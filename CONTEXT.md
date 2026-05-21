@@ -29,12 +29,32 @@ The browser’s stored `memberId`, `firstName`, and `lastName` (three separate `
 _Avoid_: Login session, server-side member session, assuming localStorage implies the row still exists in Sheets, a single JSON blob for member fields
 
 **Members sheet**:
-The persistent Google Sheets tab listing every **Member** (one row per `memberId`); if the tab is missing on first registration, the app creates the tab and header row—coaches only need an empty spreadsheet shared with the service account. If the tab exists but row 1 is not the canonical headers, the API refuses read/write until a coach fixes or deletes the tab (no silent header overwrite or column guessing). `createdAt` is set by the server at registration as a Stockholm-local timestamp (same calendar timezone as **Check-in**).
+The persistent Google Sheets tab listing every **Member** (one row per `memberId`); if the tab is missing on first registration, the app creates the tab and header row—coaches only need an empty spreadsheet shared with the service account. If the tab exists but row 1 is not the canonical headers, the API refuses read/write until a coach fixes or deletes the tab (no silent header overwrite or column guessing). `createdAt` is set by the server at registration as a wall-clock timestamp in the **Club calendar timezone** (same zone as **Check-in**).
 _Avoid_: Yearly attendance tabs (`checkins_YYYY`), assuming coaches hand-type every column header before first use, renaming headers for readability without updating the app, UTC-only timestamps on member rows
 
+**Check-ins sheet** (year tab):
+The Google Sheets tab `checkins_YYYY` for one calendar year’s **Check-in** rows (append-only). If missing on first write that year, the app creates the tab and canonical header row (`memberId`, `date`, `displayName`); if the tab exists with wrong headers, the API refuses read/write until a coach fixes or deletes the tab (same strictness as **Members sheet**).
+_Avoid_: Coaches pre-creating every future year tab, silent header overwrite, mixing multiple years in one tab, a separate time-of-day column (attendance is per calendar day only)
+
+**Club calendar timezone**:
+The IANA timezone for “today”, year tab selection, and row timestamps — from env `TZ` (API default `Europe/Stockholm` if unset). Code reads the configured zone; no hardcoded `Europe/Stockholm` in helpers or `stockholm*` function names.
+_Avoid_: Hardcoding Stockholm in `Intl` formatters, assuming the server OS timezone, naming helpers after a city when they use `TZ`
+
+**Check-in date**:
+The club-calendar day on a **Check-in** row, stored as `YYYY-MM-DD` in the `date` column; used for “today” and duplicate detection (no time-of-day stored).
+_Avoid_: UTC date, ISO timestamps in the `date` column, a separate time-of-day column on the row
+
+**Year check-in count**:
+How many **Check-in** rows a **Member** has in the current calendar year’s **Check-ins sheet** (`checkins_YYYY`); one row per day at most. Exposed as `yearCount` on status and check-in responses; increases by one on first check-in that day, unchanged on `already_checked_in`.
+_Avoid_: Counting across years, counting before the row exists (client-only guess), including today in a separate field
+
 **Check-in**:
-One attendance record for a member on a single calendar day (Europe/Stockholm).
+One attendance record for a member on a single calendar day in the **Club calendar timezone**.
 _Avoid_: Sign-in, registration
+
+**Check-in display name**:
+The full name stored on a **Check-in** row (`displayName` column): trimmed `firstName` + space + `lastName` as sent at check-in time from **On-device member identity**, not re-read from the **Members sheet** when the row is written.
+_Avoid_: First-name-only in the log, live lookup from Sheets on every check-in in slice #5, assuming coaches edit names on old attendance rows
 
 **Club PIN**:
 A shared secret code that unlocks the app; length is defined only in server config (`CLUB_PIN`), not fixed to four digits. Validated only on the server.
@@ -64,12 +84,19 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 - Slice #4 ships `POST /api/members/match` as a stub returning no candidates (`[]`); slice #6 replaces it with fuzzy logic and the “Är det här du?” UI — #4 does not show the confirm screen. Onboarding submit runs **match then create** (skip confirm when `candidates` is empty); same pipeline in #6 when matches exist
 - **Member** display name and `memberId` in browser storage are not cleared when **Club unlock** expires or **Club PIN** changes — only the unlock cookie is dropped; the person re-enters **Club PIN** and continues with the same stored identity
 - A **Member** has at most one **Check-in** per calendar day
-- **Check-in** rows are stored per calendar year; **Member** identity persists across years on the **Members sheet**
+- **Check-in** rows are stored per calendar year on a **Check-ins sheet** (`checkins_YYYY`); **Member** identity persists across years on the **Members sheet**
+- Each **Check-in** row stores **Check-in date**, **Check-in display name**, and `memberId`; changing the name in settings (#7) does not rewrite past rows in slice #5
+- Duplicate **Check-in** for the same **Member** on the same **Check-in date** returns HTTP `200` with `status: "already_checked_in"` (not an error status); first check-in that day returns `200` with `status: "checked_in"`
+- `POST /api/checkin` body: `memberId`, `firstName`, `lastName` (for **Check-in display name**); `GET /api/me/status` query `memberId` — both require **Club unlock**, no member session cookie
+- `GET /api/me/status` in slice #5 returns `checkedInToday` and **Year check-in count** (`yearCount`) only (no `rank` until leaderboard slice #8); home loads status on mount to set the check-in button state
+- `memberId` missing on the **Members sheet** → `404` `{ "error": "member_not_found" }` on member APIs (check-in, status); client shows Swedish re-onboard messaging, does not auto-create a **Member** on check-in
+- `POST /api/checkin` verifies the **Member** row exists before appending to the **Check-ins sheet**; body names are not required to match the **Members sheet** in slice #5 (snapshot only)
+- `POST /api/checkin` applies the same trimmed non-empty `firstName` / `lastName` rules as registration (`400` on invalid)
 
 ## Example dialogue
 
 > **Dev:** "When a **Member** changes their display name, does their **Check-in** history stay linked?"
-> **Domain expert:** "Yes — the UUID is the identity; the name on old rows can stay as it was or we update display going forward — that's a later slice decision. Typos are fixed by the **Member** in settings, not by coaches editing the sheet."
+> **Domain expert:** "Yes — the UUID is the identity. Old rows keep the **Check-in display name** from that day; new check-ins use the updated name. Typos are fixed by the **Member** in settings, not by coaches editing the sheet."
 
 > **Dev:** "If we change **Club PIN** on the server, do old **Club unlock** cookies still work?"
 > **Domain expert:** "No — everyone must enter the new PIN. Same PIN after restart is fine; a new PIN invalidates old unlocks."
@@ -99,7 +126,10 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 > **Domain expert:** "The existing stub home — proves the gate. Onboarding slots in behind the same guard in #4."
 
 > **Dev:** "Anna still has memberId in localStorage but her row was deleted in Sheets — does she get home on open?"
-> **Domain expert:** "Yes in v1 — we only check localStorage for the onboarding gate. Check-in or settings will fail later if the id is gone; we can add a verify-on-load later if coaches need it."
+> **Domain expert:** "Yes in v1 — we only check localStorage for the onboarding gate. Check-in or status returns `member_not_found`; she sees Swedish copy to register again, not a generic 500."
+
+> **Dev:** "Can check-in create a members row if the id is missing?"
+> **Domain expert:** "No — only explicit registration or link (#6). Check-in only appends to the year log when the **Member** exists."
 
 > **Dev:** "Coach renamed a column on the members tab — do we map by label?"
 > **Domain expert:** "No — fail until headers match what the app created, or delete the tab and let first registration recreate it."
@@ -109,6 +139,9 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 
 > **Dev:** "Do we build fuzzy in #4?"
 > **Domain expert:** "No — match endpoint exists but returns empty in #4; real matcher and confirm UI land in #6."
+
+> **Dev:** "Anna taps check-in twice the same day — 409?"
+> **Domain expert:** "No — `200` both times with `already_checked_in` on the second. Home disables the button and shows Redan incheckad; no error toast."
 
 ## Implementation notes (scaffold)
 
@@ -125,6 +158,8 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 - Club unlock cookie: `Secure` in production; omitted in local development (optional `COOKIE_SECURE=true` to force)
 - API auth: default-deny middleware on `/api/*` except explicit allowlist (unlock, session, health)
 - GDPR slice (#3): client-only gate; `localStorage.gdprAccepted` on Accept; static **Privacy policy page**; `react-router-dom` with `/privacy` public; no `GDPR_POLICY_VERSION` or config API; gate UI manual until a later slice
+- Home (slice #5): greeting `Hej, {firstName}!`; then **Year check-in count** as `{yearCount} träningar i år` (between greeting and CTA); enabled **Checka in idag**; after today’s **Check-in**, disabled **Redan incheckad**; status on mount; check-in button `isLoading` until response; personal rank (“plats X”) waits for slice #8
+- Slice #5 (check-in): `POST /api/checkin`, `GET /api/me/status`; **Check-ins sheet** auto-create; `api/src/time/clubCalendar.js` uses `TZ`
 - Unlock API: `POST /api/unlock` body `{ "pin": "<string>" }`; wrong PIN `401` `{ "error": "invalid_pin" }`; missing/empty pin `400` `{ "error": "invalid_format" }`; Swedish copy on client
 - `GET /api/session` → `{ "unlocked": true | false }` only
 - PIN UI (slice #2): session check on mount; PIN screen; one numeric-friendly input, no `maxLength`; compare length-agnostic on server
@@ -136,8 +171,8 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 - Modules: ESM in both `api` and `web` (`"type": "module"`)
 - Google credentials: `GOOGLE_SERVICE_ACCOUNT` is a filesystem path to service-account JSON (not inline JSON in v1)
 - Sheets slice (#4): API refuses to start without `SPREADSHEET_ID` and `GOOGLE_SERVICE_ACCOUNT` (same strictness as `CLUB_PIN` / `SESSION_SECRET`)
-- Sheets adapter errors (slice #4, JSON `{ "error": "<code>" }` only): `sheets_unavailable` (503), `sheets_forbidden` (503), `sheet_setup_invalid` (503), `member_create_failed` (500); onboarding maps each to Swedish copy + README HITL for setup/forbidden
+- Sheets adapter errors (slice #4+, JSON `{ "error": "<code>" }` only): `sheets_unavailable` (503), `sheets_forbidden` (503), `sheet_setup_invalid` (503), `member_create_failed` (500); onboarding and check-in/home reuse the same codes and Swedish mapping (no new codes in slice #5)
 - Node: `engines.node` `>=20.11 <21` (document same in README)
 - SPA build: Vite outputs to `web/dist`; Express serves `../web/dist` relative to the API package
-- Timezone: API sets `process.env.TZ` to `Europe/Stockholm` by default at boot; `TZ` still documented in `.env.example`
+- **Club calendar timezone**: API sets `process.env.TZ` to `Europe/Stockholm` by default at boot if unset; shared `api/src/time/` helpers (`calendarDateString`, `calendarYear`, `formatTimestamp`) read `TZ` via `Intl` — no hardcoded zone in function names; members/check-in import from there (replace `stockholmTimestamp.js`)
 - Production-like local run: `npm start` serves API + `web/dist` only; README documents `npm run build` first; default `PORT` 3000

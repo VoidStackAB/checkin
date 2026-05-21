@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { MEMBERS_HEADERS } from '../sheets/constants.js';
 import { SheetsError } from '../sheets/errors.js';
-import { stockholmTimestamp } from './stockholmTimestamp.js';
+import { formatTimestamp } from '../time/clubCalendar.js';
 
 function headersMatch(row) {
   if (!row || row.length < MEMBERS_HEADERS.length) {
@@ -41,7 +41,7 @@ export function createMembersRepository(adapter) {
   async function createMember({ firstName, lastName }) {
     await ensureMembersSheetReady();
     const memberId = randomUUID();
-    const createdAt = stockholmTimestamp();
+    const createdAt = formatTimestamp();
     await adapter.appendMemberRow({
       memberId,
       firstName,
@@ -52,5 +52,10 @@ export function createMembersRepository(adapter) {
     return { memberId, firstName, lastName };
   }
 
-  return { matchMembers, createMember, listMembers };
+  async function findMemberById(memberId) {
+    const rows = await listMembers();
+    return rows.find((row) => row.memberId === memberId) ?? null;
+  }
+
+  return { matchMembers, createMember, listMembers, findMemberById };
 }
