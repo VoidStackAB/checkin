@@ -1,14 +1,10 @@
 import { useState } from 'react';
 import {
-  Box,
   Button,
-  Container,
   FormControl,
   FormErrorMessage,
   FormLabel,
-  Heading,
   Input,
-  Text,
   VStack,
 } from '@chakra-ui/react';
 import {
@@ -17,6 +13,9 @@ import {
   sheetsErrorMessage,
 } from '../api/members.js';
 import { setMemberIdentity } from '../storage/member.js';
+import AppBrand from './AppBrand.jsx';
+import ScreenCard from './ScreenCard.jsx';
+import { PageShell, PageStack } from './PageShell.jsx';
 
 export default function OnboardingScreen({ onComplete }) {
   const [firstName, setFirstName] = useState('');
@@ -74,57 +73,56 @@ export default function OnboardingScreen({ onComplete }) {
   }
 
   return (
-    <Container maxW="container.sm" px={4} py={8} w="full">
-      <Box as="form" onSubmit={handleSubmit} w="full">
-        <VStack spacing={6} align="stretch">
-          <Box textAlign="center">
-            <Heading as="h1" size="lg">
-              Välkommen
-            </Heading>
-            <Text mt={2} color="gray.600" fontSize="md">
-              Ange ditt namn för att komma igång
-            </Text>
-          </Box>
+    <PageShell centered>
+      <PageStack>
+        <AppBrand subtitle="Ange ditt namn för att komma igång" size="lg" />
 
-          <FormControl isRequired isInvalid={Boolean(error)}>
-            <FormLabel htmlFor="first-name">Förnamn</FormLabel>
-            <Input
-              id="first-name"
-              name="firstName"
-              autoComplete="given-name"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              size="lg"
-            />
-          </FormControl>
-
-          <FormControl isRequired>
-            <FormLabel htmlFor="last-name">Efternamn</FormLabel>
-            <Input
-              id="last-name"
-              name="lastName"
-              autoComplete="family-name"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              size="lg"
-            />
-            {error ? <FormErrorMessage>{error}</FormErrorMessage> : null}
-          </FormControl>
-
-          <Button
-            type="submit"
-            size="lg"
-            colorScheme="teal"
-            height="4rem"
-            fontSize="lg"
-            isLoading={submitting}
-            loadingText="Sparar…"
-            isDisabled={submitting}
+        <ScreenCard>
+          <VStack
+            as="form"
+            spacing={5}
+            align="stretch"
+            onSubmit={handleSubmit}
+            w="full"
           >
-            Fortsätt
-          </Button>
-        </VStack>
-      </Box>
-    </Container>
+            <FormControl isRequired isInvalid={Boolean(error)}>
+              <FormLabel htmlFor="first-name">Förnamn</FormLabel>
+              <Input
+                id="first-name"
+                name="firstName"
+                autoComplete="given-name"
+                autoFocus
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+              />
+            </FormControl>
+
+            <FormControl isRequired isInvalid={Boolean(error)}>
+              <FormLabel htmlFor="last-name">Efternamn</FormLabel>
+              <Input
+                id="last-name"
+                name="lastName"
+                autoComplete="family-name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+              />
+              {error ? <FormErrorMessage>{error}</FormErrorMessage> : null}
+            </FormControl>
+
+            <Button
+              type="submit"
+              size="lg"
+              height="3.75rem"
+              fontSize="lg"
+              isLoading={submitting}
+              loadingText="Sparar…"
+              isDisabled={submitting}
+            >
+              Fortsätt
+            </Button>
+          </VStack>
+        </ScreenCard>
+      </PageStack>
+    </PageShell>
   );
 }

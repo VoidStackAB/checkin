@@ -1,15 +1,8 @@
 import { Link as RouterLink } from 'react-router-dom';
-import {
-  Box,
-  Button,
-  Heading,
-  Link,
-  ListItem,
-  Text,
-  UnorderedList,
-  VStack,
-} from '@chakra-ui/react';
-import { PageShell } from './PageShell.jsx';
+import { Box, Button, Link, ListItem, Text, UnorderedList } from '@chakra-ui/react';
+import { PageShell, PageStack } from './PageShell.jsx';
+import AppBrand from './AppBrand.jsx';
+import ScreenCard from './ScreenCard.jsx';
 import { setGdprAccepted } from '../storage/gdpr.js';
 
 export default function ConsentScreen({ onAccepted, onDeclined }) {
@@ -20,18 +13,14 @@ export default function ConsentScreen({ onAccepted, onDeclined }) {
 
   return (
     <PageShell>
-      <VStack spacing={6} align="stretch">
-        <Box textAlign="center">
-          <Heading as="h1" size="lg">
-            Check-in
-          </Heading>
-          <Text mt={2} color="gray.600" fontSize="md">
-            Samtycke till behandling av personuppgifter
-          </Text>
-        </Box>
+      <PageStack>
+        <AppBrand subtitle="Samtycke till behandling av personuppgifter" />
 
-        <Box fontSize="sm" color="gray.700">
-          <UnorderedList spacing={2} pl={4}>
+        <ScreenCard>
+          <Text fontSize="sm" color="gray.700" mb={3} fontWeight="medium">
+            Innan du fortsätter
+          </Text>
+          <UnorderedList spacing={3} pl={4} fontSize="sm" color="gray.700">
             <ListItem>
               Klubben sparar ditt namn och närvaro i Google Kalkylark för
               träningsstatistik.
@@ -45,35 +34,27 @@ export default function ConsentScreen({ onAccepted, onDeclined }) {
               versionen av appen.
             </ListItem>
           </UnorderedList>
-        </Box>
+        </ScreenCard>
 
         <Link
           as={RouterLink}
           to="/privacy"
           fontSize="sm"
           color="teal.600"
+          fontWeight="medium"
           textAlign="center"
+          _hover={{ color: 'teal.700', textDecoration: 'underline' }}
         >
           Läs integritetspolicyn
         </Link>
 
-        <Button
-          size="lg"
-          colorScheme="teal"
-          height="3.5rem"
-          onClick={handleAccept}
-        >
+        <Button size="lg" height="3.5rem" onClick={handleAccept}>
           Godkänn
         </Button>
-        <Button
-          size="lg"
-          variant="outline"
-          height="3.5rem"
-          onClick={onDeclined}
-        >
+        <Button size="lg" variant="outline" height="3.5rem" onClick={onDeclined}>
           Neka
         </Button>
-      </VStack>
+      </PageStack>
     </PageShell>
   );
 }

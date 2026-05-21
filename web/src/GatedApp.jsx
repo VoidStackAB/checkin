@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Flex, Spinner } from '@chakra-ui/react';
+import { Flex, Spinner, VStack } from '@chakra-ui/react';
 import { getSession } from './api/apiFetch.js';
 import PinScreen from './components/PinScreen.jsx';
 import ConsentScreen from './components/ConsentScreen.jsx';
 import ConsentDeclineScreen from './components/ConsentDeclineScreen.jsx';
 import AppShell from './components/AppShell.jsx';
 import OnboardingScreen from './components/OnboardingScreen.jsx';
+import AppBrand from './components/AppBrand.jsx';
 import { hasGdprAccepted } from './storage/gdpr.js';
 import { clearMemberIdentity, hasMemberIdentity } from './storage/member.js';
 
@@ -72,11 +73,15 @@ export default function GatedApp() {
       <Flex
         direction="column"
         minH="100dvh"
-        bg="gray.50"
+        bgGradient="linear(to-b, gray.50, gray.100)"
         align="center"
         justify="center"
+        px={4}
       >
-        <Spinner size="lg" color="teal.500" />
+        <VStack spacing={8}>
+          <AppBrand subtitle="Laddar…" />
+          <Spinner size="lg" color="teal.500" thickness="3px" />
+        </VStack>
       </Flex>
     );
   }

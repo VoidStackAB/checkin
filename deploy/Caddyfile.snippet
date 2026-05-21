@@ -1,0 +1,19 @@
+# Paste this site block into your existing Caddyfile, then:
+#   1. Replace checkin.YOUR_CLUB_DOMAIN with your subdomain (e.g. checkin.dinklubb.se)
+#   2. sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy
+#
+# Prerequisites: SPA files in /var/www/checkin, API on 127.0.0.1:3001 (deploy/docker-compose.yml)
+
+tbs.barai.se {
+	root * /var/www/checkin
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:3001
+	}
+
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}

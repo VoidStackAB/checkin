@@ -12,7 +12,8 @@
     "dev": "concurrently -n api,web -c blue,green \"npm run dev -w api\" \"npm run dev -w web\"",
     "build": "npm run build -w web",
     "start": "npm run start -w api",
-    "test": "npm test -w api"
+    "test": "npm test -w api",
+    "deploy": "./scripts/deploy.sh"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

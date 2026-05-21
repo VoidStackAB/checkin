@@ -12,17 +12,15 @@ import {
   Button,
   Container,
   Flex,
-  Heading,
   Link,
+  Skeleton,
   Text,
   VStack,
 } from '@chakra-ui/react';
-
-const NAV_ITEMS = [
-  { id: 'home', label: 'Hem' },
-  { id: 'leaderboard', label: 'Topplista' },
-  { id: 'settings', label: 'Inställningar' },
-];
+import AppBrand from './AppBrand.jsx';
+import BottomNav from './BottomNav.jsx';
+import FeedbackAlert from './FeedbackAlert.jsx';
+import ScreenCard from './ScreenCard.jsx';
 
 export default function AppShell({ onRequireOnboarding }) {
   const member = getMemberIdentity();
@@ -108,100 +106,119 @@ export default function AppShell({ onRequireOnboarding }) {
   }
 
   const buttonDisabled = statusLoading || checkedInToday || checkingIn;
-  const buttonLabel = checkedInToday ? 'Redan incheckad' : 'Checka in idag';
+  const buttonLabel = checkedInToday ? 'Redan incheckad idag' : 'Checka in idag';
 
   return (
-    <Flex direction="column" minH="100dvh" bg="gray.50">
+    <Flex
+      direction="column"
+      minH="100dvh"
+      bgGradient="linear(to-b, gray.50, gray.100)"
+    >
       <Container
         as="main"
         flex="1"
         maxW="container.sm"
         px={4}
-        py={8}
-        pb="5rem"
+        pt="max(1.5rem, env(safe-area-inset-top))"
+        pb="6rem"
       >
-        <VStack spacing={6} align="stretch">
-          <Box textAlign="center">
-            <Heading as="h1" size="lg">
-              Check-in
-            </Heading>
-            {member ? (
-              <>
-                <Text mt={2} color="gray.700" fontSize="lg">
-                  Hej, {member.firstName}!
-                </Text>
-                {!statusLoading && (
-                  <Text mt={1} color="gray.600" fontSize="md">
-                    {yearCount} träningar i år
-                  </Text>
-                )}
-              </>
-            ) : (
-              <Text mt={2} color="gray.600" fontSize="md">
-                Träningscheck-in för klubben
-              </Text>
-            )}
-          </Box>
+        <VStack spacing={5} align="stretch">
+          <AppBrand
+            subtitle={
+              member
+                ? `Hej, ${member.firstName}!`
+                : 'Träningscheck-in för klubben'
+            }
+          />
 
-          {error ? (
-            <Text textAlign="center" color="red.600" fontSize="sm">
-              {error}
-            </Text>
-          ) : null}
+          <ScreenCard>
+            <VStack spacing={4} align="stretch">
+              {statusLoading ? (
+                <>
+                  <Skeleton height="5" borderRadius="md" />
+                  <Skeleton height="4" width="60%" borderRadius="md" />
+                </>
+              ) : member ? (
+                <>
+                  <Box
+                    py={3}
+                    px={4}
+                    borderRadius="xl"
+                    bg={checkedInToday ? 'green.50' : 'gray.50'}
+                    borderWidth="1px"
+                    borderColor={checkedInToday ? 'green.200' : 'gray.200'}
+                    textAlign="center"
+                  >
+                    <Text
+                      fontSize="sm"
+                      fontWeight="semibold"
+                      color={checkedInToday ? 'green.700' : 'gray.600'}
+                      textTransform="uppercase"
+                      letterSpacing="wider"
+                    >
+                      {checkedInToday ? 'Incheckad' : 'Inte incheckad'}
+                    </Text>
+                    <Text
+                      mt={1}
+                      fontSize="2xl"
+                      fontWeight="bold"
+                      color={checkedInToday ? 'green.800' : 'gray.800'}
+                    >
+                      {yearCount}
+                    </Text>
+                    <Text fontSize="sm" color="gray.600">
+                      träningar i år
+                    </Text>
+                  </Box>
 
-          <Button
-            size="lg"
-            colorScheme="teal"
-            height="4rem"
-            fontSize="lg"
-            onClick={handleCheckin}
-            isDisabled={buttonDisabled}
-            isLoading={checkingIn}
-            loadingText="Checkar in…"
-          >
-            {buttonLabel}
-          </Button>
+                  {checkedInToday ? (
+                    <Text textAlign="center" fontSize="sm" color="gray.600">
+                      Bra jobbat — vi ses på nästa pass!
+                    </Text>
+                  ) : (
+                    <Text textAlign="center" fontSize="sm" color="gray.600">
+                      Tryck nedan när du är på plats.
+                    </Text>
+                  )}
+                </>
+              ) : null}
+
+              {error ? (
+                <FeedbackAlert onDismiss={() => setError('')}>
+                  {error}
+                </FeedbackAlert>
+              ) : null}
+
+              <Button
+                size="lg"
+                colorScheme={checkedInToday ? 'green' : 'teal'}
+                height="3.75rem"
+                fontSize="lg"
+                onClick={handleCheckin}
+                isDisabled={buttonDisabled}
+                isLoading={checkingIn}
+                loadingText="Checkar in…"
+              >
+                {buttonLabel}
+              </Button>
+            </VStack>
+          </ScreenCard>
 
           <Link
             as={RouterLink}
             to="/privacy"
             fontSize="sm"
             color="teal.600"
+            fontWeight="medium"
             textAlign="center"
+            _hover={{ color: 'teal.700', textDecoration: 'underline' }}
           >
             Integritet
           </Link>
         </VStack>
       </Container>
 
-      <Box
-        as="nav"
-        position="fixed"
-        bottom={0}
-        left={0}
-        right={0}
-        borderTopWidth="1px"
-        borderColor="gray.200"
-        bg="white"
-        pb="env(safe-area-inset-bottom, 0)"
-      >
-        <Flex maxW="container.sm" mx="auto">
-          {NAV_ITEMS.map((item) => (
-            <Button
-              key={item.id}
-              flex="1"
-              variant="ghost"
-              borderRadius={0}
-              py={4}
-              fontSize="sm"
-              isDisabled
-              color="gray.600"
-            >
-              {item.label}
-            </Button>
-          ))}
-        </Flex>
-      </Box>
+      <BottomNav />
     </Flex>
   );
 }
