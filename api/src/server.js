@@ -1,9 +1,11 @@
 process.env.TZ = process.env.TZ || 'Europe/Stockholm';
 
 import { createApp } from './app.js';
+import { loadConfig } from './config.js';
 
+const config = loadConfig();
 const PORT = Number(process.env.PORT) || 3000;
-const app = createApp();
+const app = createApp(config);
 
 app.listen(PORT, () => {
   console.log(`API listening on http://localhost:${PORT}`);

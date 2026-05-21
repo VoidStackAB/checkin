@@ -1,12 +1,16 @@
+import { useEffect, useState } from 'react';
 import {
   Box,
   Button,
   Container,
   Flex,
   Heading,
+  Spinner,
   Text,
   VStack,
 } from '@chakra-ui/react';
+import { getSession } from './api/apiFetch.js';
+import PinScreen from './components/PinScreen.jsx';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Hem' },
@@ -15,6 +19,48 @@ const NAV_ITEMS = [
 ];
 
 export default function App() {
+  const [gate, setGate] = useState('loading');
+
+  useEffect(() => {
+    let cancelled = false;
+    getSession()
+      .then(({ unlocked }) => {
+        if (!cancelled) {
+          setGate(unlocked ? 'app' : 'pin');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGate('pin');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (gate === 'loading') {
+    return (
+      <Flex
+        direction="column"
+        minH="100dvh"
+        bg="gray.50"
+        align="center"
+        justify="center"
+      >
+        <Spinner size="lg" color="teal.500" />
+      </Flex>
+    );
+  }
+
+  if (gate === 'pin') {
+    return (
+      <Flex direction="column" minH="100dvh" bg="gray.50" align="center">
+        <PinScreen onUnlocked={() => setGate('app')} />
+      </Flex>
+    );
+  }
+
   return (
     <Flex direction="column" minH="100dvh" bg="gray.50">
       <Container
@@ -46,7 +92,7 @@ export default function App() {
           </Button>
 
           <Text textAlign="center" fontSize="sm" color="gray.500">
-            Kommer snart — PIN och incheckning i nästa steg.
+            Kommer snart — incheckning i nästa steg.
           </Text>
         </VStack>
       </Container>

@@ -13,8 +13,12 @@ One attendance record for a member on a single calendar day (Europe/Stockholm).
 _Avoid_: Sign-in, registration
 
 **Club PIN**:
-A shared 4-digit code that unlocks the app; validated only on the server.
-_Avoid_: Password, login code
+A shared secret code that unlocks the app; length is defined only in server config (`CLUB_PIN`), not fixed to four digits. Validated only on the server.
+_Avoid_: Password, login code; implying a fixed digit count in the UI (no `maxLength`, no “four digits” hint)
+
+**Club unlock**:
+The app is past the PIN gate for this browser; not a **Member** login. Represented by a signed httpOnly cookie that lasts until the browser clears it. The server rejects the cookie if **Club PIN** in config no longer matches the PIN that was used to issue it (e.g. deploy/restart with a new PIN).
+_Avoid_: Club session, login, authenticated user
 
 **Check-in app** (product name in UI):
 The member-facing product labeled “Check-in” in Swedish UI (loanword in headings).
@@ -22,6 +26,8 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 
 ## Relationships
 
+- **Club unlock** is required before member-facing flows (check-in, leaderboard, settings APIs); it is separate from **Member** identity stored in the browser
+- **Member** display name and `memberId` in browser storage are not cleared when **Club unlock** expires or **Club PIN** changes — only the unlock cookie is dropped; the person re-enters **Club PIN** and continues with the same stored identity
 - A **Member** has at most one **Check-in** per calendar day
 - **Check-in** rows are stored per calendar year; **Member** identity persists across years
 
@@ -29,6 +35,12 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 
 > **Dev:** "When a **Member** changes their display name, does their **Check-in** history stay linked?"
 > **Domain expert:** "Yes — the UUID is the identity; the name on old rows can stay as it was or we update display going forward — that's a later slice decision."
+
+> **Dev:** "If we change **Club PIN** on the server, do old **Club unlock** cookies still work?"
+> **Domain expert:** "No — everyone must enter the new PIN. Same PIN after restart is fine; a new PIN invalidates old unlocks."
+
+> **Dev:** "Does a new PIN wipe the member's saved name?"
+> **Domain expert:** "No — names and member id live in browser storage for the **Member**, not in the unlock cookie. PIN only gates the app."
 
 ## Implementation notes (scaffold)
 
@@ -41,6 +53,16 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 - Config docs (scaffold): README + `.env.example` list all PRD env vars with purpose; mark which are required per slice (none required for health-only local run except optional `PORT`)
 - Health check: `GET /api/health` → `200` JSON `{ "status": "ok" }`
 - Session cookie signing: env var `SESSION_SECRET` (required from PIN slice #2 onward)
+- Club unlock cookie: `Secure` in production; omitted in local development (optional `COOKIE_SECURE=true` to force)
+- API auth: default-deny middleware on `/api/*` except explicit allowlist (unlock, session, health, and later privacy-related API if any)
+- Unlock API: `POST /api/unlock` body `{ "pin": "<string>" }`; wrong PIN `401` `{ "error": "invalid_pin" }`; missing/empty pin `400` `{ "error": "invalid_format" }`; Swedish copy on client
+- `GET /api/session` → `{ "unlocked": true | false }` only
+- PIN UI (slice #2): single `App.jsx` gate — session check on mount; PIN screen OR main shell, no client router yet; one numeric-friendly input, no `maxLength`; compare length-agnostic on server
+- Unlock rate limit: in-memory cap on `POST /api/unlock` only (e.g. 10 failures / IP / 15 min) → `429` `{ "error": "rate_limited" }`
+- Tests (slice #2): `node --test` in `api/`; root `npm test` runs `npm test -w api`
+- Web API calls: shared `apiFetch` with `credentials: 'include'`. Unlock cookie name `checkin_unlock`: `SameSite=Lax`, `httpOnly`, `Path=/`
+- PIN slice boot: API refuses to start without `CLUB_PIN` and `SESSION_SECRET`
+- Protected `/api/*` without unlock: `401` `{ "error": "unlock_required" }`
 - Modules: ESM in both `api` and `web` (`"type": "module"`)
 - Google credentials: `GOOGLE_SERVICE_ACCOUNT` is a filesystem path to service-account JSON (not inline JSON in v1)
 - Node: `engines.node` `>=20.11 <21` (document same in README)

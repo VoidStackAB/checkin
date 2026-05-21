@@ -10,7 +10,7 @@ Mobile-first training check-in for a sports club (Swedish UI). Monorepo: Express
 
 ```bash
 npm install
-cp .env.example .env   # optional for scaffold
+cp .env.example .env   # set CLUB_PIN and SESSION_SECRET for PIN slice
 npm run dev
 ```
 
@@ -25,7 +25,7 @@ npm run dev
 | `npm run dev` | API (watch) + Vite dev server |
 | `npm run build` | Production build of the web app (`web/dist`) |
 | `npm start` | Run API serving `web/dist` — run `npm run build` first |
-| `npm test` | No-op until E2E tests are added |
+| `npm test` | API unit tests (`node --test` in `api/`) |
 
 ### Production-like local run
 
@@ -38,14 +38,15 @@ curl http://localhost:3000/api/health
 
 ## Environment variables
 
-Copy `.env.example` to `.env`. None are required for the scaffold slice (health + static SPA).
+Copy `.env.example` to `.env`. PIN slice (#2) requires `CLUB_PIN` and `SESSION_SECRET` — the API exits on startup if either is missing.
 
 | Variable | Required when | Purpose |
 |----------|---------------|---------|
 | `PORT` | Optional | API port (default `3000`) |
 | `TZ` | Optional | Process timezone (API defaults to `Europe/Stockholm`) |
 | `SESSION_SECRET` | PIN slice (#2) | Signs the club-unlock session cookie |
-| `CLUB_PIN` | PIN slice (#2) | 4-digit club PIN (server only) |
+| `CLUB_PIN` | PIN slice (#2) | Club PIN (server only; length not fixed) |
+| `COOKIE_SECURE` | Optional | Set `true` to force `Secure` cookies in development |
 | `SPREADSHEET_ID` | Sheets slice (#4) | Google Spreadsheet ID |
 | `GOOGLE_SERVICE_ACCOUNT` | Sheets slice (#4) | Path to service-account JSON file |
 | `GDPR_POLICY_VERSION` | GDPR slice (#3) | Consent version string clients must accept |
