@@ -47,6 +47,7 @@ describe('checkin routes', () => {
     assert.equal(statusBefore.body.firstName, 'Anna');
     assert.equal(statusBefore.body.lastName, 'Svensson');
     assert.equal(statusBefore.body.optOutRanking, false);
+    assert.equal(statusBefore.body.rank, 1);
 
     const checkin = await agent
       .post('/api/checkin')

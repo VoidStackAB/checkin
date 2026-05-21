@@ -8,6 +8,7 @@ import { Route, Routes } from 'react-router-dom';
 import MemberAppLayout from './components/MemberAppLayout.jsx';
 import HomePage from './pages/HomePage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
+import LeaderboardPage from './pages/LeaderboardPage.jsx';
 import OnboardingScreen from './components/OnboardingScreen.jsx';
 import AppBrand from './components/AppBrand.jsx';
 import { hasGdprAccepted } from './storage/gdpr.js';
@@ -121,6 +122,7 @@ export default function GatedApp() {
         }
       >
         <Route index element={<HomePage />} />
+        <Route path="leaderboard" element={<LeaderboardPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>

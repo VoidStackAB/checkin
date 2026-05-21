@@ -3,7 +3,7 @@ import { Box, Flex, Text } from '@chakra-ui/react';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Hem', to: '/' },
-  { id: 'leaderboard', label: 'Topplista', to: '/leaderboard', soon: true },
+  { id: 'leaderboard', label: 'Topplista', to: '/leaderboard' },
   { id: 'settings', label: 'Inställningar', to: '/settings' },
 ];
 

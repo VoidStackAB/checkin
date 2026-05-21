@@ -14,7 +14,11 @@ function headersMatch(row, expected) {
   return expected.every((h, i) => row[i] === h);
 }
 
-export function createCheckinRepository(adapter, membersRepository) {
+export function createCheckinRepository(
+  adapter,
+  membersRepository,
+  leaderboardRepository = null,
+) {
   async function ensureCheckinsSheetReady(year) {
     const title = checkinsTabTitle(year);
     const meta = await adapter.getCheckinsTabMeta(year);
@@ -68,9 +72,13 @@ export function createCheckinRepository(adapter, membersRepository) {
     const year = calendarYear(now);
     const today = calendarDateString(now);
     const rows = await listYearCheckins(year);
+    const rank = leaderboardRepository
+      ? await leaderboardRepository.getRankForMember(memberId, now)
+      : undefined;
     return {
       checkedInToday: hasCheckinToday(rows, memberId, today),
       yearCount: countForMember(rows, memberId),
+      rank,
       firstName: member.firstName,
       lastName: member.lastName,
       optOutRanking: member.optOutRanking,

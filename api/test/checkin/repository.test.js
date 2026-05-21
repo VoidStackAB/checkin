@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createMembersRepository } from '../../src/members/repository.js';
+import { createLeaderboardRepository } from '../../src/leaderboard/repository.js';
 import { createCheckinRepository } from '../../src/checkin/repository.js';
 import { createInMemorySheetsAdapter } from '../../src/sheets/inMemoryAdapter.js';
 import { MemberNotFoundError } from '../../src/checkin/errors.js';
@@ -47,7 +48,8 @@ describe('checkin repository', () => {
   it('getStatus before any check-in returns zero count', async () => {
     const adapter = createInMemorySheetsAdapter();
     const members = createMembersRepository(adapter);
-    const checkins = createCheckinRepository(adapter, members);
+    const leaderboard = createLeaderboardRepository(adapter, members);
+    const checkins = createCheckinRepository(adapter, members, leaderboard);
     const created = await members.createMember({
       firstName: 'Erik',
       lastName: 'Berg',
@@ -58,6 +60,7 @@ describe('checkin repository', () => {
     );
     assert.equal(status.checkedInToday, false);
     assert.equal(status.yearCount, 0);
+    assert.equal(status.rank, 1);
     assert.equal(status.firstName, 'Erik');
     assert.equal(status.lastName, 'Berg');
     assert.equal(status.optOutRanking, false);

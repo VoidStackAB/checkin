@@ -28,6 +28,7 @@ export default function HomePage() {
   const [statusLoading, setStatusLoading] = useState(true);
   const [checkedInToday, setCheckedInToday] = useState(false);
   const [yearCount, setYearCount] = useState(0);
+  const [yearRank, setYearRank] = useState(null);
   const [error, setError] = useState('');
   const [checkingIn, setCheckingIn] = useState(false);
 
@@ -54,6 +55,9 @@ export default function HomePage() {
       setMember(getMemberIdentity());
       setCheckedInToday(Boolean(res.data.checkedInToday));
       setYearCount(res.data.yearCount ?? 0);
+      setYearRank(
+        typeof res.data.rank === 'number' ? res.data.rank : null,
+      );
     } catch {
       setError('Nätverksfel — kontrollera anslutningen och försök igen.');
     } finally {
@@ -125,6 +129,7 @@ export default function HomePage() {
             <>
               <Skeleton height="5" borderRadius="md" />
               <Skeleton height="4" width="60%" borderRadius="md" />
+              <Skeleton height="4" width="80%" borderRadius="md" />
             </>
           ) : displayMember ? (
             <>
@@ -157,6 +162,11 @@ export default function HomePage() {
                 <Text fontSize="sm" color="gray.600">
                   träningar i år
                 </Text>
+                {yearRank !== null ? (
+                  <Text mt={2} fontSize="sm" color="gray.700">
+                    Du ligger på plats {yearRank} i år
+                  </Text>
+                ) : null}
               </Box>
 
               {checkedInToday ? (

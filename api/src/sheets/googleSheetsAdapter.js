@@ -2,6 +2,15 @@ import fs from 'node:fs';
 import { google } from 'googleapis';
 import { MEMBERS_TAB, checkinsTabTitle } from './constants.js';
 import { mapGoogleError } from './errors.js';
+import { createReadCache } from './readCache.js';
+
+const CACHE_KEYS = {
+  spreadsheetTitles: 'spreadsheet:titles',
+  membersMeta: 'members:meta',
+  membersRows: 'members:rows',
+  checkinsMeta: (year) => `checkins:meta:${year}`,
+  checkinsRows: (year) => `checkins:rows:${year}`,
+};
 
 function parseBool(value) {
   if (value === true || value === 'TRUE' || value === 'true') {
@@ -23,18 +32,33 @@ export function createGoogleSheetsAdapter(config) {
   });
   const sheets = google.sheets({ version: 'v4', auth });
   const spreadsheetId = config.spreadsheetId;
+  const cache = createReadCache();
 
-  let spreadsheetCache = null;
-  let spreadsheetCacheAt = 0;
-  const SPREADSHEET_CACHE_MS = 60_000;
+  function invalidateMembersCache() {
+    cache.invalidate(CACHE_KEYS.membersMeta);
+    cache.invalidate(CACHE_KEYS.membersRows);
+  }
+
+  function invalidateCheckinsCache(year) {
+    cache.invalidate(CACHE_KEYS.checkinsMeta(year));
+    cache.invalidate(CACHE_KEYS.checkinsRows(year));
+  }
+
+  function invalidateSpreadsheetCache() {
+    cache.invalidate(CACHE_KEYS.spreadsheetTitles);
+  }
+
+  function invalidateAfterSheetStructureChange() {
+    invalidateSpreadsheetCache();
+    cache.invalidatePrefix('checkins:meta:');
+    cache.invalidatePrefix('checkins:rows:');
+    invalidateMembersCache();
+  }
 
   async function getSpreadsheetTitles() {
-    const now = Date.now();
-    if (
-      spreadsheetCache &&
-      now - spreadsheetCacheAt < SPREADSHEET_CACHE_MS
-    ) {
-      return spreadsheetCache;
+    const cached = cache.get(CACHE_KEYS.spreadsheetTitles);
+    if (cached) {
+      return cached;
     }
     const spreadsheet = await withGoogle(() =>
       sheets.spreadsheets.get({
@@ -42,14 +66,9 @@ export function createGoogleSheetsAdapter(config) {
         fields: 'sheets.properties.title',
       }),
     );
-    spreadsheetCache = spreadsheet.data.sheets ?? [];
-    spreadsheetCacheAt = now;
-    return spreadsheetCache;
-  }
-
-  function invalidateSpreadsheetCache() {
-    spreadsheetCache = null;
-    spreadsheetCacheAt = 0;
+    const titles = spreadsheet.data.sheets ?? [];
+    cache.set(CACHE_KEYS.spreadsheetTitles, titles);
+    return titles;
   }
 
   async function withGoogle(fn) {
@@ -61,10 +80,16 @@ export function createGoogleSheetsAdapter(config) {
   }
 
   async function getMembersTabMeta() {
+    const cached = cache.get(CACHE_KEYS.membersMeta);
+    if (cached) {
+      return cached;
+    }
     const sheetList = await getSpreadsheetTitles();
     const sheet = sheetList.find((s) => s.properties?.title === MEMBERS_TAB);
     if (!sheet) {
-      return { exists: false, headers: null };
+      const meta = { exists: false, headers: null };
+      cache.set(CACHE_KEYS.membersMeta, meta);
+      return meta;
     }
 
     const headerRes = await withGoogle(() =>
@@ -74,12 +99,14 @@ export function createGoogleSheetsAdapter(config) {
       }),
     );
     const headers = headerRes.data.values?.[0] ?? null;
-    return { exists: true, headers };
+    const meta = { exists: true, headers };
+    cache.set(CACHE_KEYS.membersMeta, meta);
+    return meta;
   }
 
   async function createMembersTab(headers) {
     await withGoogle(async () => {
-      invalidateSpreadsheetCache();
+      invalidateAfterSheetStructureChange();
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId,
         requestBody: {
@@ -101,9 +128,14 @@ export function createGoogleSheetsAdapter(config) {
         },
       });
     });
+    invalidateMembersCache();
   }
 
   async function listMemberRows() {
+    const cached = cache.get(CACHE_KEYS.membersRows);
+    if (cached) {
+      return cached;
+    }
     const res = await withGoogle(() =>
       sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -111,13 +143,15 @@ export function createGoogleSheetsAdapter(config) {
       }),
     );
     const rows = res.data.values ?? [];
-    return rows.map((row) => ({
+    const parsed = rows.map((row) => ({
       memberId: row[0] ?? '',
       firstName: row[1] ?? '',
       lastName: row[2] ?? '',
       optOutRanking: parseBool(row[3]),
       createdAt: row[4] ?? '',
     }));
+    cache.set(CACHE_KEYS.membersRows, parsed);
+    return parsed;
   }
 
   async function appendMemberRow(row) {
@@ -140,6 +174,7 @@ export function createGoogleSheetsAdapter(config) {
         },
       }),
     );
+    invalidateMembersCache();
   }
 
   async function updateMemberRow(row) {
@@ -167,14 +202,22 @@ export function createGoogleSheetsAdapter(config) {
         },
       }),
     );
+    invalidateMembersCache();
   }
 
   async function getCheckinsTabMeta(year) {
+    const metaKey = CACHE_KEYS.checkinsMeta(year);
+    const cached = cache.get(metaKey);
+    if (cached) {
+      return cached;
+    }
     const title = checkinsTabTitle(year);
     const sheetList = await getSpreadsheetTitles();
     const sheet = sheetList.find((s) => s.properties?.title === title);
     if (!sheet) {
-      return { exists: false, headers: null };
+      const meta = { exists: false, headers: null };
+      cache.set(metaKey, meta);
+      return meta;
     }
 
     const headerRes = await withGoogle(() =>
@@ -184,13 +227,15 @@ export function createGoogleSheetsAdapter(config) {
       }),
     );
     const headers = headerRes.data.values?.[0] ?? null;
-    return { exists: true, headers };
+    const meta = { exists: true, headers };
+    cache.set(metaKey, meta);
+    return meta;
   }
 
   async function createCheckinsTab(year, headers) {
     const title = checkinsTabTitle(year);
     await withGoogle(async () => {
-      invalidateSpreadsheetCache();
+      invalidateAfterSheetStructureChange();
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId,
         requestBody: {
@@ -212,9 +257,15 @@ export function createGoogleSheetsAdapter(config) {
         },
       });
     });
+    invalidateCheckinsCache(year);
   }
 
   async function listCheckinRows(year) {
+    const rowsKey = CACHE_KEYS.checkinsRows(year);
+    const cached = cache.get(rowsKey);
+    if (cached) {
+      return cached;
+    }
     const title = checkinsTabTitle(year);
     const res = await withGoogle(() =>
       sheets.spreadsheets.values.get({
@@ -223,11 +274,13 @@ export function createGoogleSheetsAdapter(config) {
       }),
     );
     const rows = res.data.values ?? [];
-    return rows.map((row) => ({
+    const parsed = rows.map((row) => ({
       memberId: row[0] ?? '',
       date: row[1] ?? '',
       displayName: row[2] ?? '',
     }));
+    cache.set(rowsKey, parsed);
+    return parsed;
   }
 
   async function appendCheckinRow(year, row) {
@@ -243,6 +296,7 @@ export function createGoogleSheetsAdapter(config) {
         },
       }),
     );
+    invalidateCheckinsCache(year);
   }
 
   return {

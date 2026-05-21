@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { createMembersRepository } from '../members/repository.js';
+import { createLeaderboardRepository } from '../leaderboard/repository.js';
 import { createCheckinRepository } from '../checkin/repository.js';
 import { MemberNotFoundError } from '../checkin/errors.js';
 import {
@@ -11,7 +12,12 @@ import { SheetsError, sendSheetsError } from '../sheets/errors.js';
 export function createCheckinRouter(sheetsAdapter) {
   const router = Router();
   const members = createMembersRepository(sheetsAdapter);
-  const checkins = createCheckinRepository(sheetsAdapter, members);
+  const leaderboard = createLeaderboardRepository(sheetsAdapter, members);
+  const checkins = createCheckinRepository(
+    sheetsAdapter,
+    members,
+    leaderboard,
+  );
 
   router.post('/checkin', async (req, res) => {
     const parsed = parseCheckinBody(req.body);

@@ -65,8 +65,24 @@ The club-calendar day on a **Check-in** row, stored as `YYYY-MM-DD` in the `date
 _Avoid_: UTC date, ISO timestamps in the `date` column, a separate time-of-day column on the row
 
 **Year check-in count**:
-How many **Check-in** rows a **Member** has in the current calendar year’s **Check-ins sheet** (`checkins_YYYY`); one row per day at most. Exposed as `yearCount` on status and check-in responses; increases by one on first check-in that day, unchanged on `already_checked_in`.
-_Avoid_: Counting across years, counting before the row exists (client-only guess), including today in a separate field
+How many **Check-in** rows a **Member** has in the current calendar year’s **Check-ins sheet** (`checkins_YYYY`); one row per day at most, counted only when `memberId` exists on the **Members sheet** (orphan check-in rows are ignored). Exposed as `yearCount` on status and check-in responses; increases by one on first check-in that day, unchanged on `already_checked_in`.
+_Avoid_: Counting across years, counting orphan rows toward unknown ids, counting before the row exists (client-only guess), including today in a separate field
+
+**Shared rank**:
+Competition-style placement when **Year check-in count** ties: same count → same rank number; the next lower count skips intervening places (two at #3 → next distinct count is #5).
+_Avoid_: Dense rank (1,2,2,3), average rank, re-ranking only the public list differently from personal rank
+
+**Personal year rank**:
+Where the requester stands this calendar year by **Year check-in count** among every **Member** on the **Members sheet** (including **Ranking opt-out** and members with zero check-ins this year), using **Shared rank**; exposed as `rank` on `GET /api/me/status` only, not on `GET /api/leaderboard`. Resets with the calendar year in **Club calendar timezone** (new `checkins_YYYY` tab — prior-year rows do not affect count or rank).
+_Avoid_: Rank among topplista-visible members only, rank only after first **Check-in**, carrying last year’s count into January, rank on the public leaderboard response, hiding rank when opted out
+
+**Topplista**:
+The public leaderboard screen at `/leaderboard` (bottom nav label *Topplista*); non-opt-out **Members sheet** rows with **Year check-in count** ≥ 1 whose **Shared rank** (same global ranking as **Personal year rank**) is ≤ 10 — may be more than ten rows when ties share rank 10; full name from the **Members sheet**; ordered by count descending then `createdAt` ascending within ties. Each **Leaderboard entry** row: rank as a left badge (e.g. `#3`), primary line full name, subtitle `{yearCount} träningar`. When `GET /api/leaderboard` returns no entries, show a Swedish empty state (e.g. no one has checked in this year yet), not placeholder rows; keep the nav item enabled in slice #8.
+_Avoid_: Personal rank on this screen, **Check-in display name** on the list, opted-out or zero-count members, a separate renumbered rank for the list only, hiding the tab until data exists, capping at exactly ten rows and splitting a tie at the cutoff
+
+**Leaderboard entry**:
+One row on **Topplista**: global **Shared rank** (same number as **Personal year rank** for that **Member**), **Members sheet** `firstName` / `lastName`, and **Year check-in count** for a visible member.
+_Avoid_: `memberId` in the public response, a list-only renumbered rank, opted-out members, historical check-in names
 
 **Check-in**:
 One attendance record for a member on a single calendar day in the **Club calendar timezone**.
@@ -109,7 +125,8 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 - Each **Check-in** row stores **Check-in date**, **Check-in display name**, and `memberId`; changing the name in settings (#7) does not rewrite past rows in slice #5
 - Duplicate **Check-in** for the same **Member** on the same **Check-in date** returns HTTP `200` with `status: "already_checked_in"` (not an error status); first check-in that day returns `200` with `status: "checked_in"`
 - `POST /api/checkin` body: `memberId`, `firstName`, `lastName` (for **Check-in display name**); `GET /api/me/status` query `memberId` — both require **Club unlock**, no member session cookie
-- `GET /api/me/status` in slice #5 returns `checkedInToday` and **Year check-in count** (`yearCount`) only; from settings slice #7 it also returns sheet-backed `firstName`, `lastName`, and `optOutRanking` for the requested `memberId` (same query param as today). Settings (and home on mount, if desired) use this to show **Ranking opt-out** and names after **Member link** on a new phone; home may ignore the extra fields until leaderboard slice #8 adds `rank`
+- `GET /api/me/status` in slice #5 returns `checkedInToday` and **Year check-in count** (`yearCount`) only; from settings slice #7 it also returns sheet-backed `firstName`, `lastName`, and `optOutRanking` for the requested `memberId` (same query param as today). Slice #8 adds **Personal year rank** as `rank` on the same call; home shows *Du ligger på plats {rank} i år* (or equivalent) using `rank` and `yearCount` from status only
+- `GET /api/leaderboard` (slice #8) returns public **Leaderboard entry** rows: non-opt-out, **Year check-in count** ≥ 1, global **Shared rank** ≤ 10 (no requester fields, no `memberId`); **Club unlock** required; client passes no identity on this route in v1
 - Settings slice #7 does not add a separate GET member endpoint — one status read avoids duplicate Sheets lookups
 - `PATCH /api/members/me` (slice #7): body requires `memberId` (no server-side **Member** session; path `/me` means the client-asserted identity, not cookie-derived). Optional `firstName`, `lastName`, `optOutRanking` — any subset; if either name field is sent, both are required and validated like registration. Response returns updated `memberId`, `firstName`, `lastName`, `optOutRanking`. Opt-out toggle may PATCH only `optOutRanking`; name save sends both names
 - After a successful `GET /api/me/status`, if sheet `firstName` / `lastName` differ from **On-device member identity**, the client updates localStorage to match the sheet (silent sync; home greeting stays accurate after **Member link** or another device’s name edit)
@@ -208,6 +225,33 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 > **Dev:** "Can she toggle topplista without resubmitting her name?"
 > **Domain expert:** "Yes — PATCH with only `memberId` and `optOutRanking`. Name save sends both names; same validation as onboarding."
 
+> **Dev:** "Personal rank on leaderboard GET or status?"
+> **Domain expert:** "Status only — home already loads it. Leaderboard endpoint is just the public top list."
+
+> **Dev:** "Erik opted out with 12 trainings — is he still #2 on home?"
+> **Domain expert:** "Yes — personal rank is against everyone on the members sheet, opt-out or not. He just doesn't appear on Topplista."
+
+> **Dev:** "Anna registered but never checked in — plats?"
+> **Domain expert:** "She's in the pool with yearCount 0, shared rank with everyone else at zero. Home can show plats and noll träningar."
+
+> **Dev:** "Four people tie for 10th on count — three rows or thirteen?"
+> **Domain expert:** "All four — topplista is everyone at rank 10 or better, not a hard row cap. Ties at the boundary stay fair."
+
+> **Dev:** "Thirty members at zero trainings — on Topplista?"
+> **Domain expert:** "No — public list only includes people with at least one check-in this year. Home rank still counts everyone on the members sheet."
+
+> **Dev:** "Plats on Hem doesn't match Topplista rank column?"
+> **Domain expert:** "Same global rank everywhere — topplista just hides opt-out and zero-count rows, it doesn't renumber."
+
+> **Dev:** "Check-in row for a deleted memberId — skew the board?"
+> **Domain expert:** "Ignore it — only members sheet rows get counts and ranks. Junk rows don't move anyone else's plats."
+
+> **Dev:** "Plats line above or below träningar i år?"
+> **Domain expert:** "Below, inside the same card — one stats block, one skeleton."
+
+> **Dev:** "1 January, no 2027 rows yet — rank from 2026?"
+> **Domain expert:** "No — new year tab, everyone at zero count, fresh ranks. Topplista empty until someone checks in."
+
 > **Dev:** "She linked on a new phone — home still says the typo she typed?"
 > **Domain expert:** "Status returns sheet names; client overwrites localStorage when they differ. Greeting matches the **Members sheet** after the next status load."
 
@@ -239,7 +283,7 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 - Club unlock cookie: `Secure` when `NODE_ENV=production` (or `COOKIE_SECURE=true`); omitted in local development. Production deploy must set `NODE_ENV=production` on the Node process (documented start command / systemd) — `npm start` alone does not set it
 - API auth: default-deny middleware on `/api/*` except explicit allowlist (unlock, session, health)
 - GDPR slice (#3): client-only gate; `localStorage.gdprAccepted` on Accept; static **Privacy policy page**; `react-router-dom` with `/privacy` public; no `GDPR_POLICY_VERSION` or config API; gate UI manual until a later slice
-- Home (slice #5): greeting `Hej, {firstName}!`; then **Year check-in count** as `{yearCount} träningar i år` (between greeting and CTA); enabled **Checka in idag**; after today’s **Check-in**, disabled **Redan incheckad**; status on mount; check-in button `isLoading` until response; personal rank (“plats X”) waits for slice #8
+- Home (slice #5): greeting `Hej, {firstName}!`; stat card with incheckad status, **Year check-in count**, then **Personal year rank** copy *Du ligger på plats {rank} i år* directly under *träningar i år* (same card, same status load/skeleton); check-in CTA below; enabled **Checka in idag** / disabled **Redan incheckad**; rank always shown when status succeeds (including rank > 10 and **Ranking opt-out**)
 - Slice #5 (check-in): `POST /api/checkin`, `GET /api/me/status`; **Check-ins sheet** auto-create; `api/src/time/clubCalendar.js` uses `TZ`
 - Unlock API: `POST /api/unlock` body `{ "pin": "<string>" }`; wrong PIN `401` `{ "error": "invalid_pin" }`; missing/empty pin `400` `{ "error": "invalid_format" }`; Swedish copy on client
 - `GET /api/session` → `{ "unlocked": true | false }` only
