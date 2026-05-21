@@ -19,6 +19,11 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
+if [[ ! -f api-key.json ]]; then
+  echo "Missing ${REPO_ROOT}/api-key.json (Google service account JSON, next to .env)" >&2
+  exit 1
+fi
+
 echo "==> npm ci"
 npm ci
 

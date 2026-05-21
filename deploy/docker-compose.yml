@@ -1,8 +1,11 @@
 # Run from repo root: docker compose -f deploy/docker-compose.yml up -d --build
-# Uses ../.env (repo root) and ../secrets/ (see .env.example)
+# Uses ../.env and ../api-key.json (service account JSON next to .env)
+
+name: checkin
 
 services:
-  api:
+  checkin-api:
+    container_name: checkin-api
     build:
       context: ..
       dockerfile: deploy/Dockerfile
@@ -10,9 +13,9 @@ services:
       - ../.env
     environment:
       NODE_ENV: production
+      GOOGLE_SERVICE_ACCOUNT: /app/api-key.json
     volumes:
-      # Same path as local: GOOGLE_SERVICE_ACCOUNT=./secrets/service-account.json
-      - ../secrets:/app/api/secrets:ro
+      - ../api-key.json:/app/api-key.json:ro
     ports:
       - '127.0.0.1:3001:3000'
     restart: unless-stopped

@@ -65,7 +65,7 @@ CONTEXT.md    Domain glossary and scaffold decisions
 ## Setting up Google Sheets
 
 1. Create a [service account](https://console.cloud.google.com/iam-admin/serviceaccounts) (no GCP project roles required for Sheets-only access).
-2. Create a JSON key for that account and save it locally (e.g. `./secrets/service-account.json`). Set `GOOGLE_SERVICE_ACCOUNT` in `.env` to that path.
+2. Create a JSON key for that account and save it at the repo root as `api-key.json` (next to `.env`, gitignored). Set `GOOGLE_SERVICE_ACCOUNT=../api-key.json` in `.env` (see [.env.example](.env.example)).
 3. Enable the [Google Sheets API](https://console.cloud.google.com/apis/api/sheets.googleapis.com) for your project.
 4. Create an empty spreadsheet in Google Drive and copy its ID into `SPREADSHEET_ID` (from the spreadsheet URL).
 5. Share the spreadsheet with the service account email (from the JSON `client_email`) as **Editor**.
@@ -86,7 +86,7 @@ Production uses a **dedicated subdomain**, **host Caddy** (you append a snippet 
    sudo mkdir -p /var/www/checkin
    sudo chown "$USER:$USER" /var/www/checkin   # or a dedicated deploy user
    ```
-3. **Env** — In the clone: `cp .env.example .env` and fill in secrets (gitignored). Put the Google service-account JSON at `secrets/service-account.json` (same path as local dev; Docker mounts it into the container).
+3. **Env** — In the clone: `cp .env.example .env` and fill in values. Place the Google service-account JSON as `api-key.json` next to `.env` (gitignored; Docker mounts it as `checkin-api`).
 4. **Clone** — e.g. `~/git/checkin` (see [Google Sheets](#setting-up-google-sheets) on the VPS).
 5. **Caddy** — Append `deploy/Caddyfile.snippet` to your Caddyfile, replace `checkin.YOUR_CLUB_DOMAIN`, then validate and reload Caddy.
 6. **Deploy** — From the clone: `./scripts/deploy.sh` (builds web, copies to `/var/www/checkin`, starts API). Override paths with `CHECKIN_REPO` / `CHECKIN_WEB_ROOT` if needed.
@@ -99,7 +99,7 @@ Production uses a **dedicated subdomain**, **host Caddy** (you append a snippet 
 | `SESSION_SECRET` | Yes | Long random string |
 | `CLUB_PIN` | Yes | Club PIN (server only) |
 | `SPREADSHEET_ID` | Yes | Google Spreadsheet ID |
-| `GOOGLE_SERVICE_ACCOUNT` | Yes | `./secrets/service-account.json` (repo root; mounted read-only in Docker) |
+| `GOOGLE_SERVICE_ACCOUNT` | Yes | `../api-key.json` in `.env` (file at repo root; container `checkin-api` uses `/app/api-key.json`) |
 | `TZ` | Recommended | `Europe/Stockholm` (**Club calendar timezone**) |
 | `PORT` | In container | Leave `3000` (host maps **3001** → 3000 in `deploy/docker-compose.yml`) |
 
@@ -131,7 +131,7 @@ The build includes `manifest.webmanifest` and `icon.svg` so the shortcut shows t
 | Path | Purpose |
 |------|---------|
 | `deploy/Caddyfile.snippet` | Paste into existing Caddy config |
-| `deploy/docker-compose.yml` | API container (`127.0.0.1:3001`) |
+| `deploy/docker-compose.yml` | `checkin-api` container (`127.0.0.1:3001`) |
 | `scripts/deploy.sh` | Build web, publish static to `/var/www/checkin`, restart API container |
 
 Deploy slice tracked as [GitHub issue #10](https://github.com/MiloBarai/checkin/issues/10) (closed).
