@@ -21,8 +21,24 @@ A **Member** preference to hide their name from the public top-10 list while sti
 _Avoid_: GDPR consent, privacy toggle (ambiguous), yes/no text in the sheet
 
 **Member**:
-A club person who checks in; identified by a stable server-side UUID (`memberId`) assigned by the server on registration (`crypto.randomUUID()`); separate from their display name. Each `POST` registration creates a new row (no name-based dedup in v1); the onboarding UI prevents double-submit. Registration accepts trimmed non-empty `firstName` and `lastName` only (no max length or character rules in v1). Reusing an existing `memberId` on a new phone is explicit in slice #6 (link), not client-supplied on create.
+A club person who checks in; identified by a stable server-side UUID (`memberId`) assigned by the server on registration (`crypto.randomUUID()`); separate from their display name. Each `POST` registration without a link creates a new row (no name-based dedup in v1); the onboarding UI prevents double-submit. Registration accepts trimmed non-empty `firstName` and `lastName` only (no max length or character rules in v1). Reusing an existing `memberId` on a new phone is **Member link** (slice #6), not an ad-hoc id on create.
 _Avoid_: User, account, profile (when meaning the person), assuming the server merges duplicate name submissions automatically, coaches fixing typos in the spreadsheet, client-generated ids on create
+
+**Member link**:
+Onboarding confirmation that an existing **Member** row is the same person on this phone; `POST /api/members` with body `{ memberId }` only (no `firstName` / `lastName` on link) verifies the row exists, returns `memberId` plus sheet `firstName` and `lastName`, and does not append a **Members sheet** row. **On-device member identity** after link uses those response names (not the spelling typed on the name form); the sheet is not updated on link.
+_Avoid_: Auto-link from match score alone, a separate link-only route in v1, rewriting the **Members sheet** on link, keeping typed onboarding spelling in localStorage when they picked a candidate
+
+**Match candidate**:
+One existing **Member** returned by `POST /api/members/match` for the **Fuzzy match confirm** UI: `memberId`, sheet `firstName` / `lastName`, `displayName` (trimmed sheet `firstName` + space + trimmed sheet `lastName`, for the list only), and **Year check-in count** (`yearCount` from the current year **Check-ins sheet** at match time, same counting rules as status); ranked, at most three per request.
+_Avoid_: Treating the list as auto-selected, omitting sheet names when the client needs them for **Member link**, denormalized counts on the **Members sheet**, deferring `yearCount` until after link
+
+**Fuzzy name match**:
+Server-side similarity search when onboarding without **On-device member identity**: compare normalized full names (trim, lowercase, fold å/ä→a and ö→o, single `firstName + " " + lastName` string) against every **Members sheet** row using **Levenshtein ratio** `1 - distance / max(len(a), len(b))`; include **Match candidates** with similarity **≥ 0.85**, ranked by score descending then **Members sheet** `createdAt` ascending on ties, max three; never link without **Fuzzy match confirm**.
+_Avoid_: Separate first/last thresholds, auto-link on high score, client-side-only matching, treating exactly 85% as below threshold, unpinned string-similarity libraries in tests
+
+**Fuzzy match confirm**:
+The onboarding step after name entry when `POST /api/members/match` returns one or more **Match candidates**; one screen lists every candidate (display name and **Year check-in count**). The user selects exactly one row, then confirms with a primary control (*Det är jag* / equivalent) to **Member link** — that control stays disabled until a row is selected. A separate control (*Ingen av dessa* / equivalent) creates a new **Member**. Link does not run on row tap alone. User may go back to the name form; resubmit re-runs **Fuzzy name match** with updated names.
+_Avoid_: Auto-picking the top match, showing candidates one-at-a-time in v1, immediate link on row tap, separate confirm routes, trapping the user on confirm with no way to fix a typo, skipping confirm when there is only one high-scoring candidate
 
 **On-device member identity**:
 The browser’s stored `memberId`, `firstName`, and `lastName` (three separate `localStorage` keys) for whoever is using the app on this phone; not validated against Sheets on app load in v1.
@@ -76,12 +92,12 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 - Accept stores only `gdprAccepted` in the browser (no policy version); if the club changes policy text, coaches ask members to clear site data or accept again manually — no automatic re-prompt in v1
 - **Ranking opt-out** is stored on the **Member** record and changed in settings, not on the consent screen
 - Display names are corrected by the **Member** in settings (#7), not by coaches editing the **Members sheet** manually
-- `POST /api/members` returns `memberId` plus trimmed `firstName` and `lastName` for the client to persist in **On-device member identity** (not `optOutRanking` or `createdAt` in the response)
-- `POST /api/members/match` body: `{ firstName, lastName }`; response: `{ candidates: [] }` in #4; in #6 each candidate includes `memberId`, `displayName`, `yearCount` (max 3)
+- `POST /api/members` without `memberId`: body `{ firstName, lastName }` creates a **Member** row; with `memberId` only: **Member link** (no new row). Both return `memberId` plus `firstName` and `lastName` for **On-device member identity** (from sheet on link, from body on create; not `optOutRanking` or `createdAt`); invalid or unknown `memberId` on link → `404` `member_not_found`
+- `POST /api/members/match` body: `{ firstName, lastName }`; response: `{ candidates: [] }` in #4; in #6 **Fuzzy name match** loads **Members sheet** plus current-year **Check-ins sheet** to build ranked **Match candidates** (max 3)
 - **Club unlock** is required before member-facing flows (check-in, leaderboard, settings APIs); it is separate from **Member** identity stored in the browser
 - After **Data processing consent**, the client shows onboarding until **On-device member identity** exists (`memberId`, `firstName`, `lastName` all present), then home; no server round-trip to verify the member row on load (stale ids surface when a member API runs, e.g. check-in)
 - Onboarding is a fourth client gate in `GatedApp` (after PIN and consent, before `AppShell`); not a separate route or overlay on home in v1
-- Slice #4 ships `POST /api/members/match` as a stub returning no candidates (`[]`); slice #6 replaces it with fuzzy logic and the “Är det här du?” UI — #4 does not show the confirm screen. Onboarding submit runs **match then create** (skip confirm when `candidates` is empty); same pipeline in #6 when matches exist
+- Slice #4 ships `POST /api/members/match` as a stub returning no candidates (`[]`); slice #6 replaces it with fuzzy logic and **Fuzzy match confirm** (“Är det här du?”) — #4 does not show that screen. Onboarding submit runs **match then create** when `candidates` is empty; when non-empty, show **Fuzzy match confirm** then **Member link** (sheet names on device) or `POST /api/members` create with the same trimmed names as the onboarding form (*Ingen av dessa* — unchanged from slice #5)
 - **Member** display name and `memberId` in browser storage are not cleared when **Club unlock** expires or **Club PIN** changes — only the unlock cookie is dropped; the person re-enters **Club PIN** and continues with the same stored identity
 - A **Member** has at most one **Check-in** per calendar day
 - **Check-in** rows are stored per calendar year on a **Check-ins sheet** (`checkins_YYYY`); **Member** identity persists across years on the **Members sheet**
@@ -139,6 +155,36 @@ _Avoid_: Using “Incheckning” as the app title (use for action copy later, e.
 
 > **Dev:** "Do we build fuzzy in #4?"
 > **Domain expert:** "No — match endpoint exists but returns empty in #4; real matcher and confirm UI land in #6."
+
+> **Dev:** "Anna taps Ja on the confirm screen — new API route?"
+> **Domain expert:** "Same `POST /api/members` with her chosen `memberId` from the candidate. Server checks the row exists, no duplicate member row. localStorage gets first/last from the sheet row she picked — if she typed Carl but chose Karl’s row, home says Karl."
+
+> **Dev:** "Does link POST need the typo names in the body?"
+> **Domain expert:** "No — only `memberId`. Response carries sheet first/last; client stores that. Create still sends both names."
+
+> **Dev:** "Three fuzzy hits — three screens or one?"
+> **Domain expert:** "One screen, all candidates listed. She taps the row that is her, or one control for 'none of these' which creates a new member. No wizard through each name."
+
+> **Dev:** "Match on first and last separately?"
+> **Domain expert:** "No — one normalized full-name string per person, one similarity score, rank and take up to three above the threshold."
+
+> **Dev:** "Where does yearCount on the confirm list come from?"
+> **Domain expert:** "Same live count as status — read this year's check-ins tab when match runs, count rows per candidate memberId. No extra column on members."
+
+> **Dev:** "Tap a row and we link immediately?"
+> **Domain expert:** "No — select a row, then press the confirm button. Bottom button for none of these → new member. Two deliberate steps before link."
+
+> **Dev:** "They reject all candidates — which names hit the new row?"
+> **Domain expert:** "What they typed on the first onboarding form, same as slice #5. Match was only to offer link, not to change the create payload."
+
+> **Dev:** "Two members score 0.92 — who is listed first?"
+> **Domain expert:** "Higher score wins; if tied, the member row with the earlier createdAt on the sheet. Same rule anywhere we cap at three."
+
+> **Dev:** "Wrong spelling on the confirm list — stuck?"
+> **Domain expert:** "Back to the name step and Fortsätt again. Match runs fresh; we don't lock them into the first query."
+
+> **Dev:** "One candidate at 0.98 — skip the confirm screen?"
+> **Domain expert:** "No — still one row, still select plus Det är jag. High score never auto-links."
 
 > **Dev:** "Anna taps check-in twice the same day — 409?"
 > **Domain expert:** "No — `200` both times with `already_checked_in` on the second. Home disables the button and shows Redan incheckad; no error toast."

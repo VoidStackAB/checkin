@@ -16,5 +16,3 @@ Settings screen: change first/last name (same memberId, updates `members` sheet 
 - [ ] Tests cover PATCH behavior with mocked repository
 
 ## Blocked by
-
-- #6

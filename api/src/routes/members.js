@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { createMembersRepository } from '../members/repository.js';
 import { parseMemberNames } from '../members/validateNames.js';
+import { parseCreateOrLinkBody } from '../members/parseCreateBody.js';
+import { MemberNotFoundError } from '../checkin/errors.js';
 import { SheetsError, sendSheetsError } from '../sheets/errors.js';
 
 export function createMembersRouter(sheetsAdapter) {
@@ -21,15 +23,19 @@ export function createMembersRouter(sheetsAdapter) {
   });
 
   router.post('/members', async (req, res) => {
-    const parsed = parseMemberNames(req.body);
+    const parsed = parseCreateOrLinkBody(req.body);
     if (parsed.error) {
       return res.status(400).json({ error: parsed.error });
     }
     try {
+      if (parsed.link) {
+        const result = await members.linkMember(parsed.memberId);
+        return res.status(200).json(result);
+      }
       const result = await members.createMember(parsed);
       return res.status(201).json(result);
     } catch (err) {
-      return handleMemberRouteError(res, err, { create: true });
+      return handleMemberRouteError(res, err, { create: !parsed.link });
     }
   });
 
@@ -37,6 +43,9 @@ export function createMembersRouter(sheetsAdapter) {
 }
 
 function handleMemberRouteError(res, err, { create = false } = {}) {
+  if (err instanceof MemberNotFoundError) {
+    return res.status(404).json({ error: err.code });
+  }
   if (err instanceof SheetsError) {
     return sendSheetsError(res, err);
   }

@@ -23,3 +23,11 @@ export async function createMember(firstName, lastName) {
   });
   return parseJsonResponse(res);
 }
+
+export async function linkMember(memberId) {
+  const res = await apiFetch('/api/members', {
+    method: 'POST',
+    body: JSON.stringify({ memberId }),
+  });
+  return parseJsonResponse(res);
+}

@@ -16,6 +16,3 @@ Leaderboard vertical slice: compute current-year training counts from `checkins_
 - [ ] Topplista + home rank snippet in Swedish, mobile-first
 
 ## Blocked by
-
-- #6
-- #8
