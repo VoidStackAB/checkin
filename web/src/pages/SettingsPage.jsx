@@ -229,8 +229,8 @@ export default function SettingsPage() {
                 Dölj mig från topplistan
               </FormLabel>
               <FormHelperText mt={0}>
-                Du syns inte i den offentliga listan. Din egen statistik på hem
-                skärmen påverkas inte.
+                Du syns inte i den offentliga topplistan. Antal träningar på
+                hemskärmen påverkas inte.
               </FormHelperText>
             </VStack>
             <Switch

@@ -23,7 +23,6 @@ import {
   homeContentPaddingBottom,
 } from '../components/layoutConstants.js';
 import ScreenCard from '../components/ScreenCard.jsx';
-import YearRankCard from '../components/YearRankCard.jsx';
 import { PageStack } from '../components/PageShell.jsx';
 
 export default function HomePage() {
@@ -35,7 +34,6 @@ export default function HomePage() {
   const [statusLoading, setStatusLoading] = useState(true);
   const [checkedInToday, setCheckedInToday] = useState(false);
   const [yearCount, setYearCount] = useState(0);
-  const [yearRank, setYearRank] = useState(null);
   const [error, setError] = useState('');
   const [checkingIn, setCheckingIn] = useState(false);
 
@@ -64,9 +62,6 @@ export default function HomePage() {
       setMember(getMemberIdentity());
       setCheckedInToday(Boolean(res.data.checkedInToday));
       setYearCount(res.data.yearCount ?? 0);
-      setYearRank(
-        typeof res.data.rank === 'number' ? res.data.rank : null,
-      );
     } catch {
       setError('Nätverksfel — kontrollera anslutningen och försök igen.');
     } finally {
@@ -178,8 +173,6 @@ export default function HomePage() {
                       träningar i år
                     </Text>
                   </Box>
-
-                  {yearRank !== null ? <YearRankCard rank={yearRank} /> : null}
 
                   {checkedInToday ? (
                     <Text textAlign="center" fontSize="sm" color="gray.600">

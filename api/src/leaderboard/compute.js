@@ -87,19 +87,44 @@ export function buildRankedMembers(members, counts) {
 }
 
 /**
+ * Dense display rank: ties share a place; the next count is always +1 (1, 1, 2, 3…).
+ * @param {{ firstName: string, lastName: string, yearCount: number }[]} rows
+ */
+function assignDisplayRanks(rows) {
+  /** @type {{ rank: number, firstName: string, lastName: string, yearCount: number }[]} */
+  const entries = [];
+  let rank = 1;
+  let index = 0;
+
+  while (index < rows.length) {
+    const count = rows[index].yearCount;
+    let end = index;
+    while (end < rows.length && rows[end].yearCount === count) {
+      end += 1;
+    }
+    for (let i = index; i < end; i += 1) {
+      entries.push({
+        rank,
+        firstName: rows[i].firstName,
+        lastName: rows[i].lastName,
+        yearCount: rows[i].yearCount,
+      });
+    }
+    rank += 1;
+    index = end;
+  }
+
+  return entries;
+}
+
+/**
  * @param {RankedMember[]} ranked
  */
 export function getPublicLeaderboardEntries(ranked) {
-  return ranked
-    .filter(
-      (row) => !row.optOutRanking && row.yearCount >= 1 && row.rank <= 10,
-    )
-    .map(({ rank, firstName, lastName, yearCount }) => ({
-      rank,
-      firstName,
-      lastName,
-      yearCount,
-    }));
+  const visible = ranked.filter(
+    (row) => !row.optOutRanking && row.yearCount >= 1 && row.rank <= 10,
+  );
+  return assignDisplayRanks(visible);
 }
 
 /**

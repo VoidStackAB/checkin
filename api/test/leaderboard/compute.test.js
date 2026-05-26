@@ -59,9 +59,67 @@ describe('leaderboard compute', () => {
     const entries = getPublicLeaderboardEntries(ranked);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].firstName, 'Anna');
-    assert.equal(entries[0].rank, 2);
+    assert.equal(entries[0].rank, 1);
     assert.equal(getPersonalYearRank(ranked, 'b'), 1);
     assert.equal(getPersonalYearRank(ranked, 'c'), 3);
+  });
+
+  it('renumbers public ranks after excluding hidden members', () => {
+    const members = [
+      member('a', { firstName: 'Anna', lastName: 'A' }),
+      member('b', {
+        firstName: 'Erik',
+        lastName: 'B',
+        optOutRanking: true,
+      }),
+      member('c', { firstName: 'Carl', lastName: 'C' }),
+      member('d', {
+        firstName: 'Dana',
+        lastName: 'D',
+        optOutRanking: true,
+      }),
+      member('e', { firstName: 'Eva', lastName: 'E' }),
+    ];
+    const counts = new Map([
+      ['a', 5],
+      ['b', 4],
+      ['c', 3],
+      ['d', 2],
+      ['e', 1],
+    ]);
+    const entries = getPublicLeaderboardEntries(
+      buildRankedMembers(members, counts),
+    );
+    assert.deepEqual(
+      entries.map((e) => e.rank),
+      [1, 2, 3],
+    );
+    assert.deepEqual(
+      entries.map((e) => e.firstName),
+      ['Anna', 'Carl', 'Eva'],
+    );
+  });
+
+  it('uses dense display ranks for ties on the public list', () => {
+    const members = [
+      member('a', { firstName: 'Kerstin', lastName: 'A' }),
+      member('b', { firstName: 'Bengt', lastName: 'B' }),
+      member('c', { firstName: 'Lennart', lastName: 'C' }),
+      member('d', { firstName: 'Milo', lastName: 'D' }),
+    ];
+    const counts = new Map([
+      ['a', 3],
+      ['b', 3],
+      ['c', 2],
+      ['d', 1],
+    ]);
+    const entries = getPublicLeaderboardEntries(
+      buildRankedMembers(members, counts),
+    );
+    assert.deepEqual(
+      entries.map((e) => e.rank),
+      [1, 1, 2, 3],
+    );
   });
 
   it('includes full tie group at rank 10', () => {
