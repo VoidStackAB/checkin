@@ -46,7 +46,7 @@ export default function LeaderboardPage() {
         <VStack spacing={4} align="stretch">
           {!loading && !error && entries.length > 0 ? (
             <Text fontSize="sm" color="gray.600" textAlign="center">
-              Sorterat efter antal träningar. Vid lika antal delas platsnummer.
+              Sorterat efter antal träningar i år.
             </Text>
           ) : null}
 
@@ -94,7 +94,8 @@ export default function LeaderboardPage() {
 
       {!loading && !error && entries.length > 0 ? (
         <Text fontSize="xs" color="gray.500" textAlign="center">
-          Visar medlemmar som checkat in minst en gång i år.
+          Visar alla med plats 10 eller bättre. Vid lika antal träningar delas
+          platsnummer.
         </Text>
       ) : null}
     </PageStack>

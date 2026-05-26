@@ -7,7 +7,8 @@ export default function LeaderboardRow({
   total,
   compact = false,
 }) {
-  const style = rankPodiumStyle(entry.rank);
+  const podium = rankPodiumStyle(entry.rank);
+  const isPodium = entry.rank <= 3;
 
   return (
     <Flex
@@ -17,8 +18,14 @@ export default function LeaderboardRow({
       py={compact ? 1.5 : 2}
       px={compact ? 2 : 3}
       borderRadius="lg"
-      borderBottomWidth={index < total - 1 ? '1px' : '0'}
-      borderColor="gray.100"
+      bg={isPodium ? podium.bg : undefined}
+      borderWidth={isPodium ? '1px' : '0'}
+      borderBottomWidth={
+        isPodium ? '1px' : index < total - 1 ? '1px' : '0'
+      }
+      borderColor={
+        isPodium ? podium.borderColor : 'gray.100'
+      }
     >
       <Flex
         align="center"
@@ -27,24 +34,23 @@ export default function LeaderboardRow({
         flexShrink={0}
       >
         <Badge
-          bg={style.badgeBg}
-          color={style.badgeColor}
+          bg={podium.badgeBg}
+          color={podium.badgeColor}
           fontSize={compact ? 'sm' : 'md'}
           px={2}
           py={0.5}
           borderRadius="md"
-          variant={entry.rank > 3 ? 'solid' : 'subtle'}
-          fontWeight="semibold"
+          variant="subtle"
         >
           #{entry.rank}
         </Badge>
       </Flex>
       <Box flex="1" minW={0}>
         <Text
-          fontWeight="semibold"
+          fontWeight={isPodium ? 'bold' : 'semibold'}
           fontSize={compact ? 'sm' : 'md'}
           noOfLines={1}
-          color="gray.800"
+          color={isPodium ? podium.accent : 'gray.800'}
         >
           {displayLeaderName(entry)}
         </Text>

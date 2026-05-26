@@ -1,25 +1,37 @@
 export function rankPodiumStyle(rank) {
   if (rank === 1) {
     return {
-      badgeBg: 'yellow.200',
-      badgeColor: 'yellow.900',
+      bg: 'yellow.50',
+      borderColor: 'yellow.300',
+      badgeBg: 'yellow.100',
+      badgeColor: 'yellow.800',
+      accent: 'yellow.700',
     };
   }
   if (rank === 2) {
     return {
-      badgeBg: 'gray.200',
-      badgeColor: 'gray.800',
+      bg: 'gray.50',
+      borderColor: 'gray.300',
+      badgeBg: 'gray.100',
+      badgeColor: 'gray.700',
+      accent: 'gray.700',
     };
   }
   if (rank === 3) {
     return {
-      badgeBg: 'orange.200',
-      badgeColor: 'orange.900',
+      bg: 'orange.50',
+      borderColor: 'orange.200',
+      badgeBg: 'orange.100',
+      badgeColor: 'orange.800',
+      accent: 'orange.700',
     };
   }
   return {
-    badgeBg: 'teal.500',
-    badgeColor: 'white',
+    bg: 'white',
+    borderColor: 'gray.100',
+    badgeBg: 'teal.50',
+    badgeColor: 'teal.800',
+    accent: 'teal.700',
   };
 }
 
