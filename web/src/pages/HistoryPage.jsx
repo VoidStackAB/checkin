@@ -6,6 +6,7 @@ import {
   Button,
   Flex,
   Heading,
+  HStack,
   Skeleton,
   Text,
   VStack,
@@ -79,7 +80,8 @@ function NavArrow({ direction, onClick, disabled, label }) {
       disabled={disabled}
       onClick={disabled ? undefined : onClick}
       flexShrink={0}
-      w="2.25rem"
+      w="2.5rem"
+      h="2.5rem"
       display="flex"
       alignItems="center"
       justifyContent="center"
@@ -234,9 +236,11 @@ export default function HistoryPage() {
       <ScreenCard>
         <VStack spacing={5} align="stretch">
           <Flex align="center" justify="space-between" gap={3}>
-            <Text fontWeight="semibold" color="gray.800" fontSize="lg">
-              {year} Q{quarter}
-            </Text>
+            {memberId && !loading && !error ? (
+              <StatBlock label="träningar" value={quarterCount} />
+            ) : (
+              <Box />
+            )}
             <Button
               size="sm"
               colorScheme="teal"
@@ -275,30 +279,36 @@ export default function HistoryPage() {
             </>
           ) : (
             <>
-              <StatBlock label="träningar" value={quarterCount} />
-
-              <Flex align="stretch" gap={2} w="full">
+              <HStack spacing={3} justify="center">
                 <NavArrow
                   direction="left"
                   label="Tidigare kvartal"
                   onClick={() => shiftQuarter(-1)}
                   disabled={isEarliestQuarter}
                 />
-                <Box flex="1" minW={0} px={2}>
-                  <CheckinHeatmap
-                    year={year}
-                    quarter={quarter}
-                    entries={quarterEntries}
-                    today={todayString()}
-                  />
-                </Box>
+                <Text
+                  fontWeight="semibold"
+                  color="gray.800"
+                  fontSize="lg"
+                  minW="5rem"
+                  textAlign="center"
+                >
+                  {year} Q{quarter}
+                </Text>
                 <NavArrow
                   direction="right"
                   label="Nästa kvartal"
                   onClick={() => shiftQuarter(1)}
                   disabled={isLatestQuarter}
                 />
-              </Flex>
+              </HStack>
+
+              <CheckinHeatmap
+                year={year}
+                quarter={quarter}
+                entries={quarterEntries}
+                today={todayString()}
+              />
 
               {quarterCount === 0 ? (
                 <Text fontSize="sm" color="gray.600" textAlign="center">
