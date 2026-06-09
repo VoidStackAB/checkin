@@ -38,14 +38,15 @@ curl http://localhost:3000/api/health
 
 ## Environment variables
 
-Copy `.env.example` to `.env`. The API exits on startup if required variables are missing (`CLUB_PIN`, `SESSION_SECRET`, `SPREADSHEET_ID`, `GOOGLE_SERVICE_ACCOUNT`).
+Copy `.env.example` to `.env`. The API exits on startup if required variables are missing (`CLUB_PIN`, `TRAINER_PIN`, `SESSION_SECRET`, `SPREADSHEET_ID`, `GOOGLE_SERVICE_ACCOUNT`).
 
 | Variable | Required when | Purpose |
 |----------|---------------|---------|
 | `PORT` | Optional | API port (default `3000`) |
 | `TZ` | Optional | Process timezone (API defaults to `Europe/Stockholm`) |
-| `SESSION_SECRET` | PIN slice (#2) | Signs the club-unlock session cookie |
+| `SESSION_SECRET` | PIN slice (#2) | Signs the club-unlock and trainer session cookies |
 | `CLUB_PIN` | PIN slice (#2) | Club PIN (server only; length not fixed) |
+| `TRAINER_PIN` | Always | Trainer-only password gating the `/report` page (use a value different from `CLUB_PIN`) |
 | `COOKIE_SECURE` | Optional | Set `true` to force `Secure` cookies in development |
 | `SPREADSHEET_ID` | Sheets slice (#4)+ | Google Spreadsheet ID |
 | `GOOGLE_SERVICE_ACCOUNT` | Sheets slice (#4)+ | Path to service-account JSON file |
@@ -90,6 +91,13 @@ Coaches define extra groups by adding rows to the `groups` tab (auto-created wit
 
 CI and local unit tests use an in-memory adapter (no live Google call).
 
+### Trainer report
+
+`/report` is a separate, trainer-only page (outside the member app and its club PIN). It is gated by its own `TRAINER_PIN` password and its own session cookie, so a member who knows the club PIN cannot see who attended. After unlocking, the coach picks a **date** and a **group** to list everyone who checked in that day in that group.
+
+- The report endpoint (`GET /api/trainer/report?date=YYYY-MM-DD&groupId=`) reads the relevant `groupN_YYYY` (or `checkins_YYYY` for the default group) tab and filters by date; names are resolved live from the `members` tab.
+- Rotate access by changing `TRAINER_PIN` (existing trainer sessions are invalidated, same as `CLUB_PIN` rotation).
+
 ## Deployment (VPS + Caddy + Docker)
 
 Production uses a **dedicated subdomain**, **host Caddy** (you append a snippet to your existing config), static files in **`/var/www/checkin`**, and the **API in Docker** on `127.0.0.1:3001`. Local `npm start` remains valid for production-like testing on one port.
@@ -114,6 +122,7 @@ Production uses a **dedicated subdomain**, **host Caddy** (you append a snippet 
 | `NODE_ENV` | In Docker | Compose sets `production` on the container (**Secure** cookie). Optional in `.env` for `npm start` on the VPS |
 | `SESSION_SECRET` | Yes | Long random string |
 | `CLUB_PIN` | Yes | Club PIN (server only) |
+| `TRAINER_PIN` | Yes | Trainer-only password for `/report` (different from `CLUB_PIN`) |
 | `SPREADSHEET_ID` | Yes | Google Spreadsheet ID |
 | `GOOGLE_SERVICE_ACCOUNT` | Yes | `../api-key.json` in `.env` (file at repo root; container `checkin-api` uses `/app/api-key.json`) |
 | `TZ` | Recommended | `Europe/Stockholm` (**Club calendar timezone**) |

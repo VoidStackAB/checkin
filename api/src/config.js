@@ -5,12 +5,14 @@ export const COOKIE_NAME = 'checkin_unlock';
 
 export function loadConfig() {
   const clubPin = process.env.CLUB_PIN;
+  const trainerPin = process.env.TRAINER_PIN;
   const sessionSecret = process.env.SESSION_SECRET;
   const spreadsheetId = process.env.SPREADSHEET_ID?.trim();
   const googleServiceAccountPath = process.env.GOOGLE_SERVICE_ACCOUNT?.trim();
 
   const missing = [];
   if (!clubPin) missing.push('CLUB_PIN');
+  if (!trainerPin) missing.push('TRAINER_PIN');
   if (!sessionSecret) missing.push('SESSION_SECRET');
   if (!spreadsheetId) missing.push('SPREADSHEET_ID');
   if (!googleServiceAccountPath) missing.push('GOOGLE_SERVICE_ACCOUNT');
@@ -38,6 +40,7 @@ export function loadConfig() {
 
   return {
     clubPin,
+    trainerPin,
     sessionSecret,
     cookieSecure,
     spreadsheetId,

@@ -7,6 +7,7 @@ import { createRequireUnlock } from './clubUnlock/middleware.js';
 import { healthRouter } from './routes/health.js';
 import { createUnlockRouter } from './routes/unlock.js';
 import { createSessionRouter } from './routes/session.js';
+import { createTrainerRouter } from './routes/trainer.js';
 import { createMembersRouter } from './routes/members.js';
 import { createCheckinRouter } from './routes/checkin.js';
 import { createLeaderboardRouter } from './routes/leaderboard.js';
@@ -27,6 +28,13 @@ export function createApp(config = loadConfig()) {
   api.use(healthRouter);
   api.use(createUnlockRouter(config));
   api.use(createSessionRouter(config));
+  // Trainer routes have their own password gate, so they are mounted before
+  // the club-unlock middleware (a trainer reaches /report without the club PIN).
+  api.use(
+    createTrainerRouter(config, sheetsAdapter, {
+      defaultGroupName: config.defaultGroupName,
+    }),
+  );
   api.use(createRequireUnlock(config));
   const routerOptions = { defaultGroupName: config.defaultGroupName };
   api.use(createMembersRouter(sheetsAdapter));
