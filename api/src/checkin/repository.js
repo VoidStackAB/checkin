@@ -6,7 +6,7 @@ import {
 } from '../sheets/constants.js';
 import { SheetsError } from '../sheets/errors.js';
 import { checkinDisplayName } from './displayName.js';
-import { MemberNotFoundError } from './errors.js';
+import { InvalidCheckinDateError, MemberNotFoundError } from './errors.js';
 import { NotInGroupError } from '../groups/errors.js';
 
 function headersMatch(row, expected) {
@@ -155,5 +155,102 @@ export function createCheckinRepository(
     return summaries;
   }
 
-  return { checkIn, getStatus, getGroupCheckinSummaries };
+  async function addCheckinForDate(
+    { memberId, firstName, lastName, groupId = DEFAULT_GROUP_ID, date },
+    now = new Date(),
+  ) {
+    await requireMember(memberId);
+    if (groupsRepository) {
+      const allowed = await groupsRepository.isMemberInGroup(memberId, groupId);
+      if (!allowed) {
+        throw new NotInGroupError();
+      }
+    }
+    const today = calendarDateString(now);
+    // Lexicographic comparison is chronological for YYYY-MM-DD strings.
+    if (!date || date > today) {
+      throw new InvalidCheckinDateError();
+    }
+    const year = Number(date.slice(0, 4));
+    const displayName = checkinDisplayName({ firstName, lastName });
+    const title = groupCheckinsTabTitle(groupId, year);
+
+    await ensureCheckinTabReady(title);
+    const rows = await adapter.listCheckinRowsByTitle(title);
+
+    if (hasCheckinToday(rows, memberId, date)) {
+      return {
+        status: 'already_checked_in',
+        date,
+        groupId,
+        yearCount: countForMember(rows, memberId),
+      };
+    }
+
+    await adapter.appendCheckinRowByTitle(title, {
+      memberId,
+      date,
+      displayName,
+    });
+
+    return {
+      status: 'checked_in',
+      date,
+      groupId,
+      yearCount: countForMember(rows, memberId) + 1,
+    };
+  }
+
+  async function getMemberHistory(
+    memberId,
+    groups,
+    { year } = {},
+    now = new Date(),
+  ) {
+    await requireMember(memberId);
+    const targetYear = year ?? calendarYear(now);
+    const counts = {};
+    const entries = [];
+    for (const group of groups) {
+      const title = groupCheckinsTabTitle(group.groupId, targetYear);
+      // eslint-disable-next-line no-await-in-loop
+      const rows = await listCheckinsByTitle(title);
+      for (const row of rows) {
+        if (row.memberId === memberId && row.date) {
+          counts[row.date] = (counts[row.date] ?? 0) + 1;
+          entries.push({
+            date: row.date,
+            groupId: group.groupId,
+            groupName: group.name,
+          });
+        }
+      }
+    }
+    // Most recent first; tie-break on group name for stable ordering.
+    entries.sort((a, b) => {
+      if (a.date !== b.date) {
+        return a.date < b.date ? 1 : -1;
+      }
+      return a.groupName.localeCompare(b.groupName);
+    });
+    let checkinCount = 0;
+    for (const value of Object.values(counts)) {
+      checkinCount += value;
+    }
+    return {
+      year: targetYear,
+      counts,
+      entries,
+      dayCount: Object.keys(counts).length,
+      checkinCount,
+    };
+  }
+
+  return {
+    checkIn,
+    getStatus,
+    getGroupCheckinSummaries,
+    addCheckinForDate,
+    getMemberHistory,
+  };
 }

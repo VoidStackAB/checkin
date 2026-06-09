@@ -6,3 +6,12 @@ export class MemberNotFoundError extends Error {
     this.status = 404;
   }
 }
+
+export class InvalidCheckinDateError extends Error {
+  constructor() {
+    super('Invalid check-in date');
+    this.name = 'InvalidCheckinDateError';
+    this.code = 'invalid_date';
+    this.status = 400;
+  }
+}

@@ -4,6 +4,7 @@ import { BOTTOM_NAV_HEIGHT } from './layoutConstants.js';
 
 const NAV_ITEMS = [
   { id: 'home', label: 'Hem', to: '/' },
+  { id: 'history', label: 'Historik', to: '/history' },
   { id: 'leaderboard', label: 'Topplista', to: '/leaderboard' },
   { id: 'settings', label: 'Inställningar', to: '/settings' },
 ];

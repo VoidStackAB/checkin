@@ -3,9 +3,16 @@ import { createMembersRepository } from '../members/repository.js';
 import { createLeaderboardRepository } from '../leaderboard/repository.js';
 import { createGroupsRepository } from '../groups/repository.js';
 import { createCheckinRepository } from '../checkin/repository.js';
-import { MemberNotFoundError } from '../checkin/errors.js';
-import { GroupNotFoundError } from '../groups/errors.js';
-import { parseMemberIdQuery } from '../checkin/validateCheckin.js';
+import {
+  InvalidCheckinDateError,
+  MemberNotFoundError,
+} from '../checkin/errors.js';
+import { GroupNotFoundError, NotInGroupError } from '../groups/errors.js';
+import {
+  parseBackfillBody,
+  parseHistoryQuery,
+  parseMemberIdQuery,
+} from '../checkin/validateCheckin.js';
 import { SheetsError, sendSheetsError } from '../sheets/errors.js';
 
 function parseGroupMembershipBody(body) {
@@ -100,6 +107,37 @@ export function createGroupsRouter(sheetsAdapter, options = {}) {
     }
   });
 
+  router.get('/me/checkins', async (req, res) => {
+    const parsed = parseHistoryQuery(req.query);
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    try {
+      const memberGroups = await groups.getMemberCheckinGroups(parsed.memberId);
+      const history = await checkins.getMemberHistory(
+        parsed.memberId,
+        memberGroups,
+        { year: parsed.year },
+      );
+      return res.status(200).json(history);
+    } catch (err) {
+      return handleGroupsRouteError(res, err);
+    }
+  });
+
+  router.post('/me/checkins', async (req, res) => {
+    const parsed = parseBackfillBody(req.body);
+    if (parsed.error) {
+      return res.status(400).json({ error: parsed.error });
+    }
+    try {
+      const result = await checkins.addCheckinForDate(parsed);
+      return res.status(200).json(result);
+    } catch (err) {
+      return handleGroupsRouteError(res, err);
+    }
+  });
+
   return router;
 }
 
@@ -109,6 +147,12 @@ function handleGroupsRouteError(res, err) {
   }
   if (err instanceof GroupNotFoundError) {
     return res.status(404).json({ error: err.code });
+  }
+  if (err instanceof NotInGroupError) {
+    return res.status(403).json({ error: err.code });
+  }
+  if (err instanceof InvalidCheckinDateError) {
+    return res.status(400).json({ error: err.code });
   }
   if (err instanceof SheetsError) {
     return sendSheetsError(res, err);
