@@ -10,6 +10,7 @@ import { createSessionRouter } from './routes/session.js';
 import { createMembersRouter } from './routes/members.js';
 import { createCheckinRouter } from './routes/checkin.js';
 import { createLeaderboardRouter } from './routes/leaderboard.js';
+import { createGroupsRouter } from './routes/groups.js';
 import { resolveSheetsAdapter } from './sheets/resolveAdapter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,9 +28,11 @@ export function createApp(config = loadConfig()) {
   api.use(createUnlockRouter(config));
   api.use(createSessionRouter(config));
   api.use(createRequireUnlock(config));
+  const routerOptions = { defaultGroupName: config.defaultGroupName };
   api.use(createMembersRouter(sheetsAdapter));
-  api.use(createCheckinRouter(sheetsAdapter));
+  api.use(createCheckinRouter(sheetsAdapter, routerOptions));
   api.use(createLeaderboardRouter(sheetsAdapter));
+  api.use(createGroupsRouter(sheetsAdapter, routerOptions));
   api.all('*', (_req, res) => {
     res.status(404).json({ error: 'not_found' });
   });

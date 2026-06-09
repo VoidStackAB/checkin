@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  Skeleton,
-  Text,
-  VStack,
-} from '@chakra-ui/react';
+import { FormControl, FormLabel, Select, Skeleton, Text, VStack } from '@chakra-ui/react';
 import { getLeaderboard } from '../api/leaderboard.js';
+import { getAllGroups } from '../api/groups.js';
 import { sheetsErrorMessage } from '../api/checkin.js';
 import AppBrand from '../components/AppBrand.jsx';
 import FeedbackAlert from '../components/FeedbackAlert.jsx';
@@ -12,16 +9,35 @@ import LeaderboardRow from '../components/LeaderboardRow.jsx';
 import ScreenCard from '../components/ScreenCard.jsx';
 import { PageStack } from '../components/PageShell.jsx';
 
+const DEFAULT_GROUP_ID = 'default';
+
 export default function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState([]);
   const [error, setError] = useState('');
+  const [groups, setGroups] = useState([]);
+  const [groupId, setGroupId] = useState(DEFAULT_GROUP_ID);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAllGroups()
+      .then((res) => {
+        if (cancelled || !res.ok) {
+          return;
+        }
+        setGroups(Array.isArray(res.data.groups) ? res.data.groups : []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadLeaderboard = useCallback(async () => {
     setError('');
     setLoading(true);
     try {
-      const res = await getLeaderboard();
+      const res = await getLeaderboard(groupId);
       if (!res.ok) {
         setError(sheetsErrorMessage(res.data.error));
         return;
@@ -32,7 +48,7 @@ export default function LeaderboardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [groupId]);
 
   useEffect(() => {
     loadLeaderboard();
@@ -44,6 +60,25 @@ export default function LeaderboardPage() {
 
       <ScreenCard>
         <VStack spacing={4} align="stretch">
+          {groups.length > 1 ? (
+            <FormControl>
+              <FormLabel fontSize="sm" color="gray.600" mb={1}>
+                Grupp
+              </FormLabel>
+              <Select
+                value={groupId}
+                onChange={(e) => setGroupId(e.target.value)}
+                focusBorderColor="teal.400"
+              >
+                {groups.map((group) => (
+                  <option key={group.groupId} value={group.groupId}>
+                    {group.name}
+                  </option>
+                ))}
+              </Select>
+            </FormControl>
+          ) : null}
+
           {!loading && !error && entries.length > 0 ? (
             <Text fontSize="sm" color="gray.600" textAlign="center">
               Sorterat efter antal träningar i år.
@@ -75,7 +110,7 @@ export default function LeaderboardPage() {
             </>
           ) : entries.length === 0 ? (
             <Text textAlign="center" color="gray.600" py={4}>
-              Ingen har checkat in i år ännu.
+              Ingen har checkat in i den här gruppen i år ännu.
             </Text>
           ) : (
             <VStack spacing={3} align="stretch" role="list">

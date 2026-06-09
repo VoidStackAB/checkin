@@ -2,21 +2,27 @@ import { Router } from 'express';
 import { createMembersRepository } from '../members/repository.js';
 import { createLeaderboardRepository } from '../leaderboard/repository.js';
 import { createCheckinRepository } from '../checkin/repository.js';
+import { createGroupsRepository } from '../groups/repository.js';
 import { MemberNotFoundError } from '../checkin/errors.js';
+import { NotInGroupError } from '../groups/errors.js';
 import {
   parseCheckinBody,
   parseMemberIdQuery,
 } from '../checkin/validateCheckin.js';
 import { SheetsError, sendSheetsError } from '../sheets/errors.js';
 
-export function createCheckinRouter(sheetsAdapter) {
+export function createCheckinRouter(sheetsAdapter, options = {}) {
   const router = Router();
   const members = createMembersRepository(sheetsAdapter);
   const leaderboard = createLeaderboardRepository(sheetsAdapter, members);
+  const groups = createGroupsRepository(sheetsAdapter, members, {
+    defaultGroupName: options.defaultGroupName,
+  });
   const checkins = createCheckinRepository(
     sheetsAdapter,
     members,
     leaderboard,
+    groups,
   );
 
   router.post('/checkin', async (req, res) => {
@@ -51,6 +57,9 @@ export function createCheckinRouter(sheetsAdapter) {
 function handleCheckinRouteError(res, err) {
   if (err instanceof MemberNotFoundError) {
     return res.status(404).json({ error: err.code });
+  }
+  if (err instanceof NotInGroupError) {
+    return res.status(403).json({ error: err.code });
   }
   if (err instanceof SheetsError) {
     return sendSheetsError(res, err);

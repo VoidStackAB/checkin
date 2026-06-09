@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { Link as RouterLink, useOutletContext } from 'react-router-dom';
 import { getMemberIdentity } from '../storage/member.js';
 import {
   getMeStatus,
@@ -7,11 +7,16 @@ import {
   postCheckin,
   sheetsErrorMessage,
 } from '../api/checkin.js';
+import { getGroupCheckins } from '../api/groups.js';
+import GroupCheckinDialog from '../components/GroupCheckinDialog.jsx';
 import {
+  Badge,
   Box,
   Button,
   Container,
   Flex,
+  Heading,
+  Link,
   Skeleton,
   Text,
   VStack,
@@ -31,53 +36,64 @@ export default function HomePage() {
   const onRequireOnboardingRef = useRef(onRequireOnboarding);
   onRequireOnboardingRef.current = onRequireOnboarding;
 
-  const [statusLoading, setStatusLoading] = useState(true);
-  const [checkedInToday, setCheckedInToday] = useState(false);
-  const [yearCount, setYearCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [groups, setGroups] = useState([]);
   const [error, setError] = useState('');
   const [checkingIn, setCheckingIn] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const memberId = member?.memberId;
 
-  const loadStatus = useCallback(async ({ silent = false } = {}) => {
-    if (!memberId) {
-      setStatusLoading(false);
-      return;
-    }
-    setError('');
-    if (!silent) {
-      setStatusLoading(true);
-    }
-    try {
-      const res = await getMeStatus(memberId);
-      if (res.status === 404 && res.data.error === 'member_not_found') {
-        onRequireOnboardingRef.current?.();
-        setError(memberNotFoundMessage());
+  const loadGroups = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!memberId) {
+        setLoading(false);
         return;
       }
-      if (!res.ok) {
-        setError(sheetsErrorMessage(res.data.error));
-        return;
-      }
-      setMember(getMemberIdentity());
-      setCheckedInToday(Boolean(res.data.checkedInToday));
-      setYearCount(res.data.yearCount ?? 0);
-    } catch {
-      setError('Nätverksfel — kontrollera anslutningen och försök igen.');
-    } finally {
+      setError('');
       if (!silent) {
-        setStatusLoading(false);
+        setLoading(true);
       }
-    }
-  }, [memberId]);
+      try {
+        const res = await getGroupCheckins(memberId);
+        if (res.status === 404 && res.data.error === 'member_not_found') {
+          onRequireOnboardingRef.current?.();
+          setError(memberNotFoundMessage());
+          return;
+        }
+        if (!res.ok) {
+          setError(sheetsErrorMessage(res.data.error));
+          return;
+        }
+        setGroups(Array.isArray(res.data.groups) ? res.data.groups : []);
+      } catch {
+        setError('Nätverksfel — kontrollera anslutningen och försök igen.');
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [memberId],
+  );
 
   useEffect(() => {
-    loadStatus();
-  }, [loadStatus]);
+    loadGroups();
+  }, [loadGroups]);
 
-  async function handleCheckin() {
+  useEffect(() => {
+    if (!memberId) {
+      return;
+    }
+    // Silent identity sync so the greeting matches the sheet after link.
+    getMeStatus(memberId)
+      .then(() => setMember(getMemberIdentity()))
+      .catch(() => {});
+  }, [memberId]);
+
+  async function checkInToGroup(group) {
     const current = getMemberIdentity();
-    if (!current || checkedInToday || checkingIn || statusLoading) {
+    if (!current || checkingIn) {
       return;
     }
     setError('');
@@ -87,6 +103,7 @@ export default function HomePage() {
         memberId: current.memberId,
         firstName: current.firstName,
         lastName: current.lastName,
+        groupId: group.groupId,
       });
       if (res.status === 404 && res.data.error === 'member_not_found') {
         onRequireOnboardingRef.current?.();
@@ -101,14 +118,7 @@ export default function HomePage() {
         setError(sheetsErrorMessage(res.data.error));
         return;
       }
-      if (
-        res.data.status === 'checked_in' ||
-        res.data.status === 'already_checked_in'
-      ) {
-        setCheckedInToday(true);
-        setYearCount(res.data.yearCount ?? yearCount);
-        loadStatus({ silent: true });
-      }
+      await loadGroups({ silent: true });
     } catch {
       setError('Nätverksfel — kontrollera anslutningen och försök igen.');
     } finally {
@@ -116,9 +126,19 @@ export default function HomePage() {
     }
   }
 
-  const buttonDisabled = statusLoading || checkedInToday || checkingIn;
-  const buttonLabel = checkedInToday ? 'Redan incheckad idag' : 'Checka in idag';
+  function handleCheckinButton() {
+    if (groups.length === 1) {
+      checkInToGroup(groups[0]);
+      return;
+    }
+    setDialogOpen(true);
+  }
+
   const displayMember = member ?? getMemberIdentity();
+  const singleDone = groups.length === 1 && groups[0].checkedInToday;
+  const buttonDisabled =
+    loading || checkingIn || groups.length === 0 || singleDone;
+  const buttonLabel = singleDone ? 'Redan incheckad idag' : 'Checka in';
 
   return (
     <Flex direction="column" flex="1" w="full" minH={0}>
@@ -134,57 +154,66 @@ export default function HomePage() {
 
           <ScreenCard>
             <VStack spacing={4} align="stretch">
-              {statusLoading ? (
+              <Heading size="sm" color="gray.800">
+                Dina grupper
+              </Heading>
+
+              {loading ? (
                 <>
-                  <Skeleton height="20" borderRadius="xl" />
                   <Skeleton height="16" borderRadius="xl" />
-                  <Skeleton height="4" width="80%" borderRadius="md" />
+                  <Skeleton height="16" borderRadius="xl" />
                 </>
-              ) : displayMember ? (
-                <>
-                  <Box
+              ) : groups.length === 0 ? (
+                <VStack spacing={2} align="stretch" py={2}>
+                  <Text textAlign="center" color="gray.600">
+                    Du är inte med i någon grupp.
+                  </Text>
+                  <Link
+                    as={RouterLink}
+                    to="/settings"
+                    fontSize="sm"
+                    color="teal.600"
+                    fontWeight="medium"
+                    textAlign="center"
+                    _hover={{ color: 'teal.700', textDecoration: 'underline' }}
+                  >
+                    Gå med i en grupp under Inställningar
+                  </Link>
+                </VStack>
+              ) : (
+                groups.map((group) => (
+                  <Flex
+                    key={group.groupId}
+                    align="center"
+                    justify="space-between"
+                    gap={3}
                     py={3}
                     px={4}
                     borderRadius="xl"
-                    bg={checkedInToday ? 'green.50' : 'gray.50'}
+                    bg={group.checkedInToday ? 'green.50' : 'gray.50'}
                     borderWidth="1px"
-                    borderColor={checkedInToday ? 'green.200' : 'gray.200'}
-                    textAlign="center"
+                    borderColor={
+                      group.checkedInToday ? 'green.200' : 'gray.200'
+                    }
                   >
-                    <Text
-                      fontSize="sm"
-                      fontWeight="semibold"
-                      color={checkedInToday ? 'green.700' : 'gray.600'}
-                      textTransform="uppercase"
-                      letterSpacing="wider"
-                    >
-                      {checkedInToday ? 'Incheckad' : 'Inte incheckad'}
-                    </Text>
-                    <Text
-                      mt={1}
-                      fontSize="3xl"
-                      fontWeight="bold"
-                      lineHeight="1"
-                      color={checkedInToday ? 'green.800' : 'gray.800'}
-                    >
-                      {yearCount}
-                    </Text>
-                    <Text fontSize="sm" color="gray.600">
-                      träningar i år
-                    </Text>
-                  </Box>
-
-                  {checkedInToday ? (
-                    <Text textAlign="center" fontSize="sm" color="gray.600">
-                      Bra jobbat — vi ses på nästa pass!
-                    </Text>
-                  ) : (
-                    <Text textAlign="center" fontSize="sm" color="gray.600">
-                      Knappen längst ned checkar in när du är på plats.
-                    </Text>
-                  )}
-                </>
-              ) : null}
+                    <Box flex="1" minW={0}>
+                      <Text
+                        fontWeight="semibold"
+                        color="gray.800"
+                        noOfLines={1}
+                      >
+                        {group.name}
+                      </Text>
+                      <Text fontSize="xs" color="gray.500">
+                        {group.yearCount} träningar i år
+                      </Text>
+                    </Box>
+                    <Badge colorScheme={group.checkedInToday ? 'green' : 'gray'}>
+                      {group.checkedInToday ? 'Incheckad' : 'Inte incheckad'}
+                    </Badge>
+                  </Flex>
+                ))
+              )}
             </VStack>
           </ScreenCard>
         </PageStack>
@@ -210,11 +239,11 @@ export default function HomePage() {
             ) : null}
             <Button
               size="lg"
-              colorScheme={checkedInToday ? 'green' : 'teal'}
+              colorScheme={singleDone ? 'green' : 'teal'}
               height="3.75rem"
               fontSize="lg"
               w="full"
-              onClick={handleCheckin}
+              onClick={handleCheckinButton}
               isDisabled={buttonDisabled}
               isLoading={checkingIn}
               loadingText="Checkar in…"
@@ -224,6 +253,13 @@ export default function HomePage() {
           </VStack>
         </Container>
       </Box>
+
+      <GroupCheckinDialog
+        isOpen={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        member={displayMember}
+        onCheckedIn={() => loadGroups({ silent: true })}
+      />
     </Flex>
   );
 }

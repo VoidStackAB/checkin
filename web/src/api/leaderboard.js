@@ -5,7 +5,10 @@ async function parseJsonResponse(res) {
   return { ok: res.ok, status: res.status, data };
 }
 
-export async function getLeaderboard() {
-  const res = await apiFetch('/api/leaderboard');
+export async function getLeaderboard(groupId) {
+  const query = groupId
+    ? `?${new URLSearchParams({ groupId })}`
+    : '';
+  const res = await apiFetch(`/api/leaderboard${query}`);
   return parseJsonResponse(res);
 }

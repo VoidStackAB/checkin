@@ -1,11 +1,13 @@
 import { calendarDateString, calendarYear } from '../time/clubCalendar.js';
 import {
   CHECKINS_HEADERS,
-  checkinsTabTitle,
+  DEFAULT_GROUP_ID,
+  groupCheckinsTabTitle,
 } from '../sheets/constants.js';
 import { SheetsError } from '../sheets/errors.js';
 import { checkinDisplayName } from './displayName.js';
 import { MemberNotFoundError } from './errors.js';
+import { NotInGroupError } from '../groups/errors.js';
 
 function headersMatch(row, expected) {
   if (!row || row.length < expected.length) {
@@ -18,12 +20,12 @@ export function createCheckinRepository(
   adapter,
   membersRepository,
   leaderboardRepository = null,
+  groupsRepository = null,
 ) {
-  async function ensureCheckinsSheetReady(year) {
-    const title = checkinsTabTitle(year);
-    const meta = await adapter.getCheckinsTabMeta(year);
+  async function ensureCheckinTabReady(title) {
+    const meta = await adapter.getCheckinTabMeta(title);
     if (!meta.exists) {
-      await adapter.createCheckinsTab(year, CHECKINS_HEADERS);
+      await adapter.createCheckinTab(title, CHECKINS_HEADERS);
       return title;
     }
     if (!headersMatch(meta.headers, CHECKINS_HEADERS)) {
@@ -36,8 +38,8 @@ export function createCheckinRepository(
     return title;
   }
 
-  async function listYearCheckins(year) {
-    const meta = await adapter.getCheckinsTabMeta(year);
+  async function listCheckinsByTitle(title) {
+    const meta = await adapter.getCheckinTabMeta(title);
     if (!meta.exists) {
       return [];
     }
@@ -48,7 +50,7 @@ export function createCheckinRepository(
         'Check-ins tab headers do not match expected schema',
       );
     }
-    return adapter.listCheckinRows(year);
+    return adapter.listCheckinRowsByTitle(title);
   }
 
   function countForMember(rows, memberId) {
@@ -71,9 +73,14 @@ export function createCheckinRepository(
     const member = await requireMember(memberId);
     const year = calendarYear(now);
     const today = calendarDateString(now);
-    const rows = await listYearCheckins(year);
+    const title = groupCheckinsTabTitle(DEFAULT_GROUP_ID, year);
+    const rows = await listCheckinsByTitle(title);
     const rank = leaderboardRepository
-      ? await leaderboardRepository.getRankForMember(memberId, now)
+      ? await leaderboardRepository.getRankForMember(
+          memberId,
+          now,
+          DEFAULT_GROUP_ID,
+        )
       : undefined;
     return {
       checkedInToday: hasCheckinToday(rows, memberId, today),
@@ -85,24 +92,35 @@ export function createCheckinRepository(
     };
   }
 
-  async function checkIn({ memberId, firstName, lastName }, now = new Date()) {
+  async function checkIn(
+    { memberId, firstName, lastName, groupId = DEFAULT_GROUP_ID },
+    now = new Date(),
+  ) {
     await requireMember(memberId);
+    if (groupsRepository) {
+      const allowed = await groupsRepository.isMemberInGroup(memberId, groupId);
+      if (!allowed) {
+        throw new NotInGroupError();
+      }
+    }
     const year = calendarYear(now);
     const date = calendarDateString(now);
     const displayName = checkinDisplayName({ firstName, lastName });
+    const title = groupCheckinsTabTitle(groupId, year);
 
-    await ensureCheckinsSheetReady(year);
-    const rows = await adapter.listCheckinRows(year);
+    await ensureCheckinTabReady(title);
+    const rows = await adapter.listCheckinRowsByTitle(title);
 
     if (hasCheckinToday(rows, memberId, date)) {
       return {
         status: 'already_checked_in',
         date,
+        groupId,
         yearCount: countForMember(rows, memberId),
       };
     }
 
-    await adapter.appendCheckinRow(year, {
+    await adapter.appendCheckinRowByTitle(title, {
       memberId,
       date,
       displayName,
@@ -112,9 +130,30 @@ export function createCheckinRepository(
     return {
       status: 'checked_in',
       date,
+      groupId,
       yearCount,
     };
   }
 
-  return { checkIn, getStatus };
+  async function getGroupCheckinSummaries(memberId, groups, now = new Date()) {
+    await requireMember(memberId);
+    const year = calendarYear(now);
+    const today = calendarDateString(now);
+    const summaries = [];
+    for (const group of groups) {
+      const title = groupCheckinsTabTitle(group.groupId, year);
+      // eslint-disable-next-line no-await-in-loop
+      const rows = await listCheckinsByTitle(title);
+      summaries.push({
+        groupId: group.groupId,
+        name: group.name,
+        isDefault: Boolean(group.isDefault),
+        checkedInToday: hasCheckinToday(rows, memberId, today),
+        yearCount: countForMember(rows, memberId),
+      });
+    }
+    return summaries;
+  }
+
+  return { checkIn, getStatus, getGroupCheckinSummaries };
 }

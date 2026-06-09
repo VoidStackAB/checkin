@@ -49,6 +49,7 @@ Copy `.env.example` to `.env`. The API exits on startup if required variables ar
 | `COOKIE_SECURE` | Optional | Set `true` to force `Secure` cookies in development |
 | `SPREADSHEET_ID` | Sheets slice (#4)+ | Google Spreadsheet ID |
 | `GOOGLE_SERVICE_ACCOUNT` | Sheets slice (#4)+ | Path to service-account JSON file |
+| `DEFAULT_GROUP_NAME` | Optional | Display name of the default group (default `Standard`) |
 
 GDPR slice (#3) uses client-only `localStorage.gdprAccepted` and a static `/privacy` page — no extra env vars.
 
@@ -71,6 +72,21 @@ CONTEXT.md    Domain glossary and scaffold decisions
 5. Share the spreadsheet with the service account email (from the JSON `client_email`) as **Editor**.
 
 On first member registration the API creates a `members` tab with headers (`memberId`, `firstName`, `lastName`, `optOutRanking`, `createdAt`). Do not rename those headers manually — fix or delete the tab and register again if the sheet was misconfigured.
+
+### Groups
+
+New members start in the **default group** (name from `DEFAULT_GROUP_NAME`, default `Standard`), whose check-ins land in the regular `checkins_YYYY` tab. In **Inställningar** every group — including the default one — is a toggle: members can join extra groups and may also leave the default group. On **Hem** you see the groups you're in and pick which one to check into (a single group checks in directly; multiple groups show a picker). The **Topplista** has a group selector so you can view any group's leaderboard, defaulting to the default group.
+
+Coaches define extra groups by adding rows to the `groups` tab (auto-created with headers `groupId`, `name`, `createdAt` on first use):
+
+| groupId | name | createdAt |
+|---------|------|-----------|
+| `1` | Måndagsträning | (optional) |
+| `2` | Tävlingsgrupp | (optional) |
+
+- Use **incremental integer** ids (`1`, `2`, `3`, …). Tabs and labels show as `Group1`, `Group2`, … independent of the `name`; the `name` is what members see when checking in.
+- Each extra group's check-ins go to a per-year tab `groupN_YYYY` (e.g. group `1` in 2026 → `group1_2026`), auto-created on first check-in with the same headers as `checkins_YYYY`.
+- Membership is stored in an auto-created `member_groups` tab (`memberId`, `groupIds`); do not edit it manually.
 
 CI and local unit tests use an in-memory adapter (no live Google call).
 

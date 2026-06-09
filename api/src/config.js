@@ -34,11 +34,14 @@ export function loadConfig() {
     process.env.NODE_ENV === 'production' ||
     process.env.COOKIE_SECURE === 'true';
 
+  const defaultGroupName = process.env.DEFAULT_GROUP_NAME?.trim() || 'Standard';
+
   return {
     clubPin,
     sessionSecret,
     cookieSecure,
     spreadsheetId,
     googleServiceAccountPath: resolvedPath,
+    defaultGroupName,
   };
 }

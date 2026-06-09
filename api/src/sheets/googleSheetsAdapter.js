@@ -1,6 +1,11 @@
 import fs from 'node:fs';
 import { google } from 'googleapis';
-import { MEMBERS_TAB, checkinsTabTitle } from './constants.js';
+import {
+  MEMBERS_TAB,
+  GROUPS_TAB,
+  MEMBER_GROUPS_TAB,
+  checkinsTabTitle,
+} from './constants.js';
 import { mapGoogleError } from './errors.js';
 import { createReadCache } from './readCache.js';
 
@@ -8,8 +13,12 @@ const CACHE_KEYS = {
   spreadsheetTitles: 'spreadsheet:titles',
   membersMeta: 'members:meta',
   membersRows: 'members:rows',
-  checkinsMeta: (year) => `checkins:meta:${year}`,
-  checkinsRows: (year) => `checkins:rows:${year}`,
+  groupsMeta: 'groups:meta',
+  groupsRows: 'groups:rows',
+  memberGroupsMeta: 'memberGroups:meta',
+  memberGroupsRows: 'memberGroups:rows',
+  checkinsMeta: (title) => `checkins:meta:${title}`,
+  checkinsRows: (title) => `checkins:rows:${title}`,
 };
 
 function parseBool(value) {
@@ -39,9 +48,19 @@ export function createGoogleSheetsAdapter(config) {
     cache.invalidate(CACHE_KEYS.membersRows);
   }
 
-  function invalidateCheckinsCache(year) {
-    cache.invalidate(CACHE_KEYS.checkinsMeta(year));
-    cache.invalidate(CACHE_KEYS.checkinsRows(year));
+  function invalidateGroupsCache() {
+    cache.invalidate(CACHE_KEYS.groupsMeta);
+    cache.invalidate(CACHE_KEYS.groupsRows);
+  }
+
+  function invalidateMemberGroupsCache() {
+    cache.invalidate(CACHE_KEYS.memberGroupsMeta);
+    cache.invalidate(CACHE_KEYS.memberGroupsRows);
+  }
+
+  function invalidateCheckinsCache(title) {
+    cache.invalidate(CACHE_KEYS.checkinsMeta(title));
+    cache.invalidate(CACHE_KEYS.checkinsRows(title));
   }
 
   function invalidateSpreadsheetCache() {
@@ -53,6 +72,8 @@ export function createGoogleSheetsAdapter(config) {
     cache.invalidatePrefix('checkins:meta:');
     cache.invalidatePrefix('checkins:rows:');
     invalidateMembersCache();
+    invalidateGroupsCache();
+    invalidateMemberGroupsCache();
   }
 
   async function getSpreadsheetTitles() {
@@ -79,55 +100,52 @@ export function createGoogleSheetsAdapter(config) {
     }
   }
 
-  async function getMembersTabMeta() {
-    const cached = cache.get(CACHE_KEYS.membersMeta);
-    if (cached) {
-      return cached;
-    }
+  async function getTabMeta(title) {
     const sheetList = await getSpreadsheetTitles();
-    const sheet = sheetList.find((s) => s.properties?.title === MEMBERS_TAB);
+    const sheet = sheetList.find((s) => s.properties?.title === title);
     if (!sheet) {
-      const meta = { exists: false, headers: null };
-      cache.set(CACHE_KEYS.membersMeta, meta);
-      return meta;
+      return { exists: false, headers: null };
     }
-
     const headerRes = await withGoogle(() =>
       sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: `${MEMBERS_TAB}!1:1`,
+        range: `${title}!1:1`,
       }),
     );
     const headers = headerRes.data.values?.[0] ?? null;
-    const meta = { exists: true, headers };
-    cache.set(CACHE_KEYS.membersMeta, meta);
-    return meta;
+    return { exists: true, headers };
   }
 
-  async function createMembersTab(headers) {
+  async function createTab(title, headers) {
     await withGoogle(async () => {
       invalidateAfterSheetStructureChange();
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId,
         requestBody: {
-          requests: [
-            {
-              addSheet: {
-                properties: { title: MEMBERS_TAB },
-              },
-            },
-          ],
+          requests: [{ addSheet: { properties: { title } } }],
         },
       });
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `${MEMBERS_TAB}!A1`,
+        range: `${title}!A1`,
         valueInputOption: 'RAW',
-        requestBody: {
-          values: [headers],
-        },
+        requestBody: { values: [headers] },
       });
     });
+  }
+
+  async function getMembersTabMeta() {
+    const cached = cache.get(CACHE_KEYS.membersMeta);
+    if (cached) {
+      return cached;
+    }
+    const meta = await getTabMeta(MEMBERS_TAB);
+    cache.set(CACHE_KEYS.membersMeta, meta);
+    return meta;
+  }
+
+  async function createMembersTab(headers) {
+    await createTab(MEMBERS_TAB, headers);
     invalidateMembersCache();
   }
 
@@ -205,68 +223,136 @@ export function createGoogleSheetsAdapter(config) {
     invalidateMembersCache();
   }
 
-  async function getCheckinsTabMeta(year) {
-    const metaKey = CACHE_KEYS.checkinsMeta(year);
+  async function getGroupsTabMeta() {
+    const cached = cache.get(CACHE_KEYS.groupsMeta);
+    if (cached) {
+      return cached;
+    }
+    const meta = await getTabMeta(GROUPS_TAB);
+    cache.set(CACHE_KEYS.groupsMeta, meta);
+    return meta;
+  }
+
+  async function createGroupsTab(headers) {
+    await createTab(GROUPS_TAB, headers);
+    invalidateGroupsCache();
+  }
+
+  async function listGroupRows() {
+    const cached = cache.get(CACHE_KEYS.groupsRows);
+    if (cached) {
+      return cached;
+    }
+    const res = await withGoogle(() =>
+      sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${GROUPS_TAB}!A2:C`,
+      }),
+    );
+    const rows = res.data.values ?? [];
+    const parsed = rows
+      .map((row) => ({
+        groupId: (row[0] ?? '').toString().trim(),
+        name: (row[1] ?? '').toString().trim(),
+        createdAt: row[2] ?? '',
+      }))
+      .filter((row) => row.groupId !== '');
+    cache.set(CACHE_KEYS.groupsRows, parsed);
+    return parsed;
+  }
+
+  async function getMemberGroupsTabMeta() {
+    const cached = cache.get(CACHE_KEYS.memberGroupsMeta);
+    if (cached) {
+      return cached;
+    }
+    const meta = await getTabMeta(MEMBER_GROUPS_TAB);
+    cache.set(CACHE_KEYS.memberGroupsMeta, meta);
+    return meta;
+  }
+
+  async function createMemberGroupsTab(headers) {
+    await createTab(MEMBER_GROUPS_TAB, headers);
+    invalidateMemberGroupsCache();
+  }
+
+  async function listMemberGroupRows() {
+    const cached = cache.get(CACHE_KEYS.memberGroupsRows);
+    if (cached) {
+      return cached;
+    }
+    const res = await withGoogle(() =>
+      sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${MEMBER_GROUPS_TAB}!A2:B`,
+      }),
+    );
+    const rows = res.data.values ?? [];
+    const parsed = rows.map((row) => ({
+      memberId: row[0] ?? '',
+      groupIds: row[1] ?? '',
+    }));
+    cache.set(CACHE_KEYS.memberGroupsRows, parsed);
+    return parsed;
+  }
+
+  async function appendMemberGroupRow(row) {
+    await withGoogle(() =>
+      sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: `${MEMBER_GROUPS_TAB}!A:B`,
+        valueInputOption: 'USER_ENTERED',
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: {
+          values: [[row.memberId, row.groupIds]],
+        },
+      }),
+    );
+    invalidateMemberGroupsCache();
+  }
+
+  async function updateMemberGroupRow(row) {
+    const rows = await listMemberGroupRows();
+    const index = rows.findIndex((r) => r.memberId === row.memberId);
+    if (index === -1) {
+      throw new Error('Member group row not found');
+    }
+    const sheetRow = index + 2;
+    await withGoogle(() =>
+      sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${MEMBER_GROUPS_TAB}!A${sheetRow}:B${sheetRow}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: {
+          values: [[row.memberId, row.groupIds]],
+        },
+      }),
+    );
+    invalidateMemberGroupsCache();
+  }
+
+  async function getCheckinTabMeta(title) {
+    const metaKey = CACHE_KEYS.checkinsMeta(title);
     const cached = cache.get(metaKey);
     if (cached) {
       return cached;
     }
-    const title = checkinsTabTitle(year);
-    const sheetList = await getSpreadsheetTitles();
-    const sheet = sheetList.find((s) => s.properties?.title === title);
-    if (!sheet) {
-      const meta = { exists: false, headers: null };
-      cache.set(metaKey, meta);
-      return meta;
-    }
-
-    const headerRes = await withGoogle(() =>
-      sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: `${title}!1:1`,
-      }),
-    );
-    const headers = headerRes.data.values?.[0] ?? null;
-    const meta = { exists: true, headers };
+    const meta = await getTabMeta(title);
     cache.set(metaKey, meta);
     return meta;
   }
 
-  async function createCheckinsTab(year, headers) {
-    const title = checkinsTabTitle(year);
-    await withGoogle(async () => {
-      invalidateAfterSheetStructureChange();
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [
-            {
-              addSheet: {
-                properties: { title },
-              },
-            },
-          ],
-        },
-      });
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${title}!A1`,
-        valueInputOption: 'RAW',
-        requestBody: {
-          values: [headers],
-        },
-      });
-    });
-    invalidateCheckinsCache(year);
+  async function createCheckinTab(title, headers) {
+    await createTab(title, headers);
+    invalidateCheckinsCache(title);
   }
 
-  async function listCheckinRows(year) {
-    const rowsKey = CACHE_KEYS.checkinsRows(year);
+  async function listCheckinRowsByTitle(title) {
+    const rowsKey = CACHE_KEYS.checkinsRows(title);
     const cached = cache.get(rowsKey);
     if (cached) {
       return cached;
     }
-    const title = checkinsTabTitle(year);
     const res = await withGoogle(() =>
       sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -283,8 +369,7 @@ export function createGoogleSheetsAdapter(config) {
     return parsed;
   }
 
-  async function appendCheckinRow(year, row) {
-    const title = checkinsTabTitle(year);
+  async function appendCheckinRowByTitle(title, row) {
     await withGoogle(() =>
       sheets.spreadsheets.values.append({
         spreadsheetId,
@@ -296,7 +381,23 @@ export function createGoogleSheetsAdapter(config) {
         },
       }),
     );
-    invalidateCheckinsCache(year);
+    invalidateCheckinsCache(title);
+  }
+
+  function getCheckinsTabMeta(year) {
+    return getCheckinTabMeta(checkinsTabTitle(year));
+  }
+
+  function createCheckinsTab(year, headers) {
+    return createCheckinTab(checkinsTabTitle(year), headers);
+  }
+
+  function listCheckinRows(year) {
+    return listCheckinRowsByTitle(checkinsTabTitle(year));
+  }
+
+  function appendCheckinRow(year, row) {
+    return appendCheckinRowByTitle(checkinsTabTitle(year), row);
   }
 
   return {
@@ -305,6 +406,18 @@ export function createGoogleSheetsAdapter(config) {
     listMemberRows,
     appendMemberRow,
     updateMemberRow,
+    getGroupsTabMeta,
+    createGroupsTab,
+    listGroupRows,
+    getMemberGroupsTabMeta,
+    createMemberGroupsTab,
+    listMemberGroupRows,
+    appendMemberGroupRow,
+    updateMemberGroupRow,
+    getCheckinTabMeta,
+    createCheckinTab,
+    listCheckinRowsByTitle,
+    appendCheckinRowByTitle,
     getCheckinsTabMeta,
     createCheckinsTab,
     listCheckinRows,

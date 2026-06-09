@@ -10,7 +10,20 @@ export function parseCheckinBody(body) {
   if (!memberId) {
     return { error: 'invalid_format' };
   }
-  return { memberId, firstName: names.firstName, lastName: names.lastName };
+  const hasGroupId = body && Object.hasOwn(body, 'groupId');
+  let groupId;
+  if (hasGroupId) {
+    if (typeof body.groupId !== 'string' || body.groupId.trim() === '') {
+      return { error: 'invalid_format' };
+    }
+    groupId = body.groupId.trim();
+  }
+  return {
+    memberId,
+    firstName: names.firstName,
+    lastName: names.lastName,
+    ...(groupId !== undefined ? { groupId } : {}),
+  };
 }
 
 export function parseMemberIdQuery(query) {

@@ -23,10 +23,15 @@ export async function getMeStatus(memberId) {
   return parsed;
 }
 
-export async function postCheckin({ memberId, firstName, lastName }) {
+export async function postCheckin({ memberId, firstName, lastName, groupId }) {
   const res = await apiFetch('/api/checkin', {
     method: 'POST',
-    body: JSON.stringify({ memberId, firstName, lastName }),
+    body: JSON.stringify({
+      memberId,
+      firstName,
+      lastName,
+      ...(groupId ? { groupId } : {}),
+    }),
   });
   return parseJsonResponse(res);
 }

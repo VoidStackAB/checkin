@@ -8,9 +8,16 @@ export function createLeaderboardRouter(sheetsAdapter) {
   const members = createMembersRepository(sheetsAdapter);
   const leaderboard = createLeaderboardRepository(sheetsAdapter, members);
 
-  router.get('/leaderboard', async (_req, res) => {
+  router.get('/leaderboard', async (req, res) => {
+    const groupId =
+      typeof req.query?.groupId === 'string' && req.query.groupId.trim() !== ''
+        ? req.query.groupId.trim()
+        : undefined;
     try {
-      const result = await leaderboard.getPublicLeaderboard();
+      const result = await leaderboard.getPublicLeaderboard(
+        new Date(),
+        groupId,
+      );
       return res.status(200).json(result);
     } catch (err) {
       return handleLeaderboardRouteError(res, err);
