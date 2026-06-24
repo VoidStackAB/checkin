@@ -36,7 +36,7 @@ jobs:
       - name: Build and push frontend
         uses: docker/build-push-action@v6
         with:
-          context: web
+          context: .
           file: web/Dockerfile
           push: true
           tags: |
@@ -48,7 +48,7 @@ jobs:
       - name: Build and push API
         uses: docker/build-push-action@v6
         with:
-          context: api
+          context: .
           file: api/Dockerfile
           push: true
           tags: |
